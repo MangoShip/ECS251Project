@@ -7,7 +7,7 @@
 #include <unistd.h>
 
 /*
- * thread.c using clock_gettime() clock
+ * thread_clock_gettime.c: thread.c that uses clock_gettime() clock
 */
 
 // Credit: https://stackoverflow.com/questions/64893834/measuring-elapsed-time-using-clock-gettimeclock-monotonic

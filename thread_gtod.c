@@ -7,7 +7,7 @@
 #include <unistd.h>
 
 /*
- * thread.c using gettimeofday() clock
+ * thread_gtod.c: thread.c that uses gettimeofday() clock
 */
 
 volatile double gtod(void)
