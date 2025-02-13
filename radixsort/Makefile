@@ -1,13 +1,29 @@
-FILE_NAME1 := radixsort_seq
+# NOTE: This version of Makefile only creates an executable
+#       with a single source file (that has the same name)
+#       If you want to have multiple source files for one
+#       executable, you need to modify this Makefile.
 
-all: radixsort_seq
+# Name of binary file
+PRODUCT := radixsort_seq
 
-radixsort_seq: $(FILE_NAME1).c
-	gcc $(DEBUG) $(FILE_NAME1).c -o $(FILE_NAME1)
+# Flags for debug mode
+DEBUG_FLAGS := -g -DDEBUG -O0
 
-debug: DEBUG = -DDEBUG
+# Flags for release mode
+RELEASE_FLAGS := -O3 -DNDEBUG
 
-debug: radixsort_seq
+# In default, compile in release mode
+# To enable debug mode, call the following: make DEBUG=1
+ifeq ($(DEBUG),1)
+	CFLAGS := $(DEBUG_FLAGS)
+else 
+	CFLAGS := $(RELEASE_FLAGS)
+endif
+
+all: $(PRODUCT)
+
+$(PRODUCT): %: %.c
+	gcc ${CFLAGS} -o $@ $<
 
 clean:
-	rm -f $(FILE_NAME1)
+	rm -f $(PRODUCT)

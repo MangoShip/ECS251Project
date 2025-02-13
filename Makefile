@@ -1,21 +1,29 @@
-FILE_NAME1 := thread
-FILE_NAME2 := thread_gtod
-FILE_NAME3 := thread_clock_gettime
+# NOTE: This version of Makefile only creates an executable
+#       with a single source file (that has the same name)
+#       If you want to have multiple source files for one
+#       executable, you need to modify this Makefile.
 
-all: thread thread_gtod thread_clock_gettime
+# Name of binary file
+PRODUCT := thread thread_gtod thread_clock_gettime
 
-thread: $(FILE_NAME1).c
-	gcc $(DEBUG) $(FILE_NAME1).c -o $(FILE_NAME1)
+# Flags for debug mode
+DEBUG_FLAGS := -g -DDEBUG -O0
 
-thread_gtod: $(FILE_NAME2).c
-	gcc $(DEBUG) $(FILE_NAME2).c -o $(FILE_NAME2)
+# Flags for release mode
+RELEASE_FLAGS := -O3 -DNDEBUG
 
-thread_clock_gettime: $(FILE_NAME3).c
-	gcc $(DEBUG) $(FILE_NAME3).c -o $(FILE_NAME3)
+# In default, compile in release mode
+# To enable debug mode, call the following: make DEBUG=1
+ifeq ($(DEBUG),1)
+	CFLAGS := $(DEBUG_FLAGS)
+else 
+	CFLAGS := $(RELEASE_FLAGS)
+endif
 
-debug: DEBUG = -DDEBUG
+all: $(PRODUCT)
 
-debug: thread thread_gtod thread_clock_gettime
+$(PRODUCT): %: %.c
+	gcc ${CFLAGS} -o $@ $<
 
 clean:
-	rm -f $(FILE_NAME1) $(FILE_NAME2) $(FILE_NAME3)
+	rm -f $(PRODUCT)
