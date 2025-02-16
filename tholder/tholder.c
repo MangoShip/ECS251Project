@@ -2,152 +2,166 @@
 #include <stdio.h>
 #include <stdint-gcc.h>
 #include <stdbool.h>
+#include <errno.h>
 
-#include <unistd.h>
-#include <pthread.h>
-#include <semaphore.h>
+#include <sys/time.h>
 
-#define DEFAULT_MAX_THREADS 8;
+#include "tholder.h"
 
-typedef struct
-{
-    bool work2do;
-    bool thread_active;
-    void *function;
-    void *args;
-    pthread_mutex_t lock;
-} thread_args;
+/* LIBRARY GLOBAL VARIABLES */
 
-pthread_mutex_t global_region_mutex = PTHREAD_MUTEX_INITIALIZER;
-thread_args *global_region = NULL;
-size_t global_region_size = 0;
+pthread_mutex_t thread_pool_mutex = PTHREAD_MUTEX_INITIALIZER;
+thread_args **thread_pool = NULL;
+size_t thread_pool_size = 0;
 
+int pthread_calls = 0;
+
+// Finds a slot with no task to run
 size_t get_inactive_index()
 {
     size_t index = 0;
-    while (true)
+    bool expected = false;
+    bool desired = true;
+
+    // Attempt to atomically compare and toggle the has_task boolean from false to true
+    while (!atomic_compare_exchange_weak(&thread_pool[index]->has_task, &expected, &desired))
     {
-        index = index % global_region_size;
-        // For each index, attempt to acquire the lock
-        int got_lock = pthread_mutex_trylock(&global_region[index].lock);
-        // If locking failed, continue to the next index
-        if (got_lock < 0)
-        {
-            index += 1;
-            continue;
-        }
-        // Otherwise return the index
-        // Caller is responsible for unlocking, as this index is now busy with a thread
-        return index;
+        expected = false;
+        index = (index + 1) % thread_pool_size;
     }
+
+    return index;
 }
 
 void *auxiliary_function(void *args)
 {
-
     // Global array index given to this thread by tholder_create()
     size_t index = (size_t)args;
+    printf("[%ld]: Starting\n", index);
+
+    struct timespec timeout;
 
     // Loop indefinitely. This loop will only break if we "wait" for too long
     while (true)
     {
-        // TODO: change this from a spin lock to a condition variable.
-        // CondVar will allow the thread to block until
-        // (signaled by another thread OR a specified time has passed)
-        while (!global_region[index].work2do)
-            ;
-        ((void (*)(void *))global_region[index].function)(global_region[index].args);
+        // When a task has been received, toggle the switch and execute it, untoggle when done
+        printf("[%ld]: Received Task!\n", index);
+        ((void *(*)(void *))thread_pool[index]->function)(thread_pool[index]->args);
+        printf("[%ld]: Task complete!\n", index);
+        atomic_store(&thread_pool[index]->has_task, false);
+
+        clock_gettime(CLOCK_REALTIME, &timeout);
+        timeout.tv_sec += 1;
+
+        // Sleep until (signaled by another thread OR a specified time has passed)
+        printf("[%ld] Acquiring lock\n", index);
+        pthread_mutex_lock(&thread_pool[index]->work_lock);
+        errno = pthread_cond_timedwait(&thread_pool[index]->work_cond_var, &thread_pool[index]->work_lock, &timeout);
+        printf("[%ld] Waking up\n", index);
+
+        // If we timed out, then break and return
+        if (errno == ETIMEDOUT)
+            break;
+
+        // Otherwise, it means there's work to do, so repeat the loop!
     }
 
-    printf("Auxiliary function done!\n");
-    // Release the lock, which free's up that index in the global array
-    pthread_mutex_unlock(&global_region[index].lock);
+    printf("[%ld]: Stopping\n", index);
+    atomic_store(&thread_pool[index]->has_thread, false);
     return NULL;
 }
 
-uint32_t tholder_create(pthread_t *__restrict __newthread,
+uint32_t tholder_create(tholder_t *__restrict __newthread,
                         const pthread_attr_t *__restrict __attr,
                         void *(*__start_routine)(void *),
                         void *__restrict __arg)
 {
     // If the region is not initialized, init with DEFAULT_MAX_THREADS
     // This first if statement is meant to protect threads from unnecessary lock contention
-    if (global_region == NULL)
+    if (thread_pool == NULL)
     {
-        pthread_mutex_lock(&global_region_mutex);
-        // After acquiring the lock, check if region is still uninit before moving forward
-        if (global_region == NULL)
-        {
-            // Initialize global region with default max threads
-            global_region_size = DEFAULT_MAX_THREADS;
-            global_region = (thread_args *)calloc(global_region_size, sizeof(thread_args));
-            for (size_t i = 0; i < global_region_size; i++)
-            {
-                // Constructor functions are for losers... kidding, this is a TODO
-                global_region[i].args = NULL;
-                global_region[i].function = NULL;
-                global_region[i].thread_active = false;
-                global_region[i].work2do = false;
-                pthread_mutex_init(&global_region[i].lock, NULL);
-            }
-        }
-        pthread_mutex_unlock(&global_region_mutex);
+        tholder_init(DEFAULT_MAX_THREADS);
     }
 
     // Find the next open slot in global array
     size_t index = get_inactive_index();
 
-    global_region[index].function = __start_routine;
-    global_region[index].args = __arg;
-    // Only AFTER writing function and args values can we toggle work2do
-    // since there may be a thread spin waiting on it
-    global_region[index].work2do = true;
-
     // If there is no thread currently active at the given index, then spawn one
-    if (!global_region[index].thread_active)
-        pthread_create(__newthread, __attr, auxiliary_function, (void *)index);
+    if (!atomic_load(&thread_pool[index]->has_thread))
+    {
+        atomic_store(&thread_pool[index]->has_thread, true);
+        // Create a thread and detatch it
+        pthread_t new_thread;
+        pthread_calls++;
+        pthread_create(&new_thread, __attr, auxiliary_function, (void *)index);
+        pthread_detach(new_thread);
+    }
 
-    printf("Returning from tholder_create\n");
+    // Else, no need to spawn a new thread, an existing thread will see the task and execute it
+
+    // Queue the task at the index and wake up the thread
+    thread_pool[index]->function = (void *)__start_routine;
+    thread_pool[index]->args = __arg;
+    pthread_cond_signal(&thread_pool[index]->work_cond_var);
+
     return 0;
 }
 
-uint32_t tholder_join(pthread_t __th, void **__thead_return)
+inline void tholder_init(size_t num_threads)
 {
-}
-
-void *bruh()
-{
-    printf("BRUH HAS BEEN EXECUTED\n");
-    return NULL;
-}
-
-void tholder_init(size_t num_threads)
-{
-    pthread_mutex_lock(&global_region_mutex);
+    printf("Initializing tholder with %ld threads\n", num_threads);
+    pthread_mutex_lock(&thread_pool_mutex);
     // After acquiring the lock, check if region is still uninit before moving forward
-    if (global_region == NULL)
+    if (thread_pool == NULL)
     {
         // Initialize global region with default max threads
-        global_region_size = num_threads;
-        global_region = (thread_args *)calloc(global_region_size, sizeof(thread_args));
-        for (size_t i = 0; i < global_region_size; i++)
+        thread_pool_size = num_threads;
+        thread_pool = (thread_args **)calloc(thread_pool_size, sizeof(thread_args *));
+        for (size_t i = 0; i < thread_pool_size; i++)
         {
+            thread_pool[i] = (thread_args *)malloc(sizeof(thread_args));
             // Constructor functions are for losers... kidding, this is a TODO
-            global_region[i].args = NULL;
-            global_region[i].function = NULL;
-            global_region[i].thread_active = false;
-            global_region[i].work2do = false;
-            pthread_mutex_init(&global_region[i].lock, NULL);
+            thread_pool[i]->args = NULL;
+            thread_pool[i]->function = NULL;
+            atomic_init(&thread_pool[i]->has_thread, false);
+            atomic_init(&thread_pool[i]->has_task, false);
+            pthread_cond_init(&thread_pool[i]->work_cond_var, NULL);
+            pthread_mutex_init(&thread_pool[i]->work_lock, NULL);
         }
     }
-    pthread_mutex_unlock(&global_region_mutex);
+    pthread_mutex_unlock(&thread_pool_mutex);
 }
+
+int bruh(void)
+{
+    return 0;
+}
+
+#define THING 8
 
 int main()
 {
-    pthread_t dummy;
-    tholder_create(&dummy, NULL, bruh, NULL);
+    tholder_init(3);
+    tholder_t dummy[THING];
 
-    sleep(3);
+    // Some parallel work
+    for (size_t i = 0; i < THING; i++)
+        tholder_create(&dummy[i], NULL, (void *)bruh, NULL);
+
+    // // Some parallel work
+    // for (size_t i = 0; i < THING; i++)
+    //     tholder_create(&dummy[i], NULL, (void *)bruh, NULL);
+
+    // // Some parallel work
+    // for (size_t i = 0; i < THING; i++)
+    //     tholder_create(&dummy[i], NULL, (void *)bruh, NULL);
+
+    // // Some parallel work
+    // for (size_t i = 0; i < THING; i++)
+    //     tholder_create(&dummy[i], NULL, (void *)bruh, NULL);
+
+    printf("ENTER TO CONTINUE\n");
+    getchar();
+    printf("pthread_create executed %d times\n", pthread_calls);
     return 0;
 }
