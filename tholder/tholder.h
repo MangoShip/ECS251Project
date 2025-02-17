@@ -1,3 +1,5 @@
+#include <stdbool.h>
+
 #include <unistd.h>
 #include <pthread.h>
 #include <semaphore.h>
@@ -24,6 +26,7 @@ typedef struct thread_args
     atomic_bool has_thread;
     atomic_bool has_task;
 
+    pthread_mutex_t data_lock;
     void *function;
     void *args;
 } thread_args;
