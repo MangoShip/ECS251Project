@@ -27,7 +27,7 @@ typedef struct thread_args
     atomic_bool has_task;
 
     pthread_mutex_t data_lock;
-    void *function;
+    void *(*function)(void *);
     void *args;
 } thread_args;
 
@@ -37,6 +37,8 @@ u_int32_t tholder_create(tholder_t *__restrict __newthread,
                          void *__restrict __arg);
 
 void tholder_init(size_t num_threads);
+
+void tholder_destroy();
 
 void *auxiliary_function(void *args);
 

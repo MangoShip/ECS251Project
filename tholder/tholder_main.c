@@ -4,10 +4,10 @@
 
 atomic_int bruh_int = ATOMIC_VAR_INIT(0);
 
-int bruh(void)
+void *bruh(void* _args)
 {
-    int hi = atomic_fetch_add(&bruh_int, 1);
-    return 0;
+    atomic_fetch_add(&bruh_int, 1);
+    return NULL;
 }
 
 int main(int argc, char *argv[])
@@ -27,12 +27,13 @@ int main(int argc, char *argv[])
     // Some parallel work
     for (size_t i = 0; i < num_threads; i++)
     {
-        tholder_create(&dummy[i], NULL, (void *)bruh, NULL);
+        tholder_create(&dummy[i], NULL, bruh, NULL);
     }
 
     printf("Finished launching threads. Press ENTER to end program");
-    getchar();    
+    getchar();
     int tasks_completed = atomic_load(&bruh_int);
     printf("%d tasks finished\n", tasks_completed);
+    tholder_destroy();
     return tasks_completed;
 }

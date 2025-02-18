@@ -7,7 +7,7 @@ atomic_int bruh_int = ATOMIC_VAR_INIT(0);
 
 int bruh(void)
 {
-    int hi = atomic_fetch_add(&bruh_int, 1);
+    atomic_fetch_add(&bruh_int, 1);
     return 0;
 }
 
@@ -32,7 +32,7 @@ int main(int argc, char *argv[])
         pthread_detach(dummy[i]);
     }
     
-    printf("Finished launching threads. Press ENTER to end program");
+    printf("Finished launching threads. Press ENTER to end program\n");
     getchar();    
     int tasks_completed = atomic_load(&bruh_int);
     printf("%d tasks finished\n", tasks_completed);

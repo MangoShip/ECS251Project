@@ -96,7 +96,7 @@ uint32_t tholder_create(tholder_t *__restrict __newthread,
     }
 
     // Queue the task at the index and wake up the thread
-    thread_pool[index]->function = (void *)__start_routine;
+    thread_pool[index]->function = __start_routine;
     thread_pool[index]->args = __arg;
 
     // Wake up the thread living in this house
@@ -109,8 +109,8 @@ uint32_t tholder_create(tholder_t *__restrict __newthread,
 
 inline void tholder_init(size_t num_threads)
 {
-    printf("Initializing tholder with %ld threads\n", num_threads);
     pthread_mutex_lock(&thread_pool_mutex);
+    printf("Initializing tholder with %ld threads\n", num_threads);
     // After acquiring the lock, check if region is still uninit before moving forward
     if (thread_pool == NULL)
     {
@@ -131,4 +131,28 @@ inline void tholder_init(size_t num_threads)
         }
     }
     pthread_mutex_unlock(&thread_pool_mutex);
+}
+
+inline void tholder_destroy()
+{
+    pthread_mutex_lock(&thread_pool_mutex);
+    printf("Destroying thread pool\n");
+    
+    if (thread_pool != NULL) {
+        for (size_t i = 0; i < thread_pool_size; i++)
+        {
+            pthread_cond_destroy(&thread_pool[i]->work_cond_var);
+            pthread_mutex_destroy(&thread_pool[i]->wait_lock);
+            pthread_mutex_destroy(&thread_pool[i]->data_lock);
+            thread_pool[i]->args = NULL;
+            thread_pool[i]->function = NULL;
+
+            free(thread_pool[i]);
+        }
+        free(thread_pool);
+        thread_pool = NULL;
+    }
+
+    pthread_mutex_unlock(&thread_pool_mutex);
+    pthread_mutex_destroy(&thread_pool_mutex);
 }
