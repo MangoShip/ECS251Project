@@ -21,7 +21,7 @@ typedef struct task_output
 typedef struct thread_args
 {
     pthread_cond_t work_cond_var;
-    pthread_mutex_t work_lock;
+    pthread_mutex_t wait_lock;
 
     atomic_bool has_thread;
     atomic_bool has_task;

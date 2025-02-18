@@ -8,8 +8,6 @@ atomic_int bruh_int = ATOMIC_VAR_INIT(0);
 int bruh(void)
 {
     int hi = atomic_fetch_add(&bruh_int, 1);
-    printf("\t\t\t\tYo what up %d\n", hi);
-    sleep(1);
     return 0;
 }
 
@@ -31,11 +29,12 @@ int main(int argc, char *argv[])
     for (size_t i = 0; i < num_threads; i++)
     {
         pthread_create(&dummy[i], NULL, (void *)bruh, NULL);
+        pthread_detach(dummy[i]);
     }
-
-    printf("ENTER TO CONTINUE\n");
-    getchar();
+    
+    printf("Finished launching threads. Press ENTER to end program");
+    getchar();    
     int tasks_completed = atomic_load(&bruh_int);
-    // printf("%d tasks finished\n", tasks_completed);
+    printf("%d tasks finished\n", tasks_completed);
     return tasks_completed;
 }

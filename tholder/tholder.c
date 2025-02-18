@@ -34,42 +34,35 @@ void *auxiliary_function(void *args)
 {
     // Global array index given to this thread by tholder_create()
     size_t index = (size_t)args;
-    printf("[%ld]: Starting\n", index);
     struct timespec timeout;
 
-    // Loop indefinitely. This loop will only break if we "wait" for too long
-    while (true)
+    // Loop as long as there is a task to execute
+    while (atomic_load(&thread_pool[index]->has_task))
     {
-        pthread_mutex_lock(&thread_pool[index]->work_lock);
+        // When a task has been received, toggle the switch and execute it, untoggle when done
+
+        // Lock the house, nobody can give us more work while we're working!
         pthread_mutex_lock(&thread_pool[index]->data_lock);
 
-        // When a task has been received, toggle the switch and execute it, untoggle when done
+        atomic_store(&thread_pool[index]->has_task, true);
         ((void *(*)(void *))thread_pool[index]->function)(thread_pool[index]->args);
-        printf("[%ld]: Task complete!\n", index);
 
         clock_gettime(CLOCK_REALTIME, &timeout);
         timeout.tv_nsec += 10000;
 
-        // Sleep until (signaled by another thread OR a specified time has passed)
         atomic_store(&thread_pool[index]->has_task, false);
+
+        // We're done working so unlock the house
         pthread_mutex_unlock(&thread_pool[index]->data_lock);
 
-        errno = pthread_cond_timedwait(&thread_pool[index]->work_cond_var, &thread_pool[index]->work_lock, &timeout);
-        printf("[%ld]: Waking up\n", index);
-
-        // If we timed out, then break and return
-        if (errno != 0 && !atomic_load(&thread_pool[index]->has_task))
-        {
-            atomic_store(&thread_pool[index]->has_thread, false);
-            pthread_mutex_unlock(&thread_pool[index]->work_lock);
-            break;
-        }
-        pthread_mutex_unlock(&thread_pool[index]->work_lock);
-
-        // Otherwise, it means there's work to do, so repeat the loop!
+        // Sleep until (signaled by another thread OR a specified time has passed)
+        pthread_mutex_lock(&thread_pool[index]->wait_lock);
+        int ret = pthread_cond_timedwait(&thread_pool[index]->work_cond_var, &thread_pool[index]->wait_lock, &timeout);
+        pthread_mutex_unlock(&thread_pool[index]->wait_lock);
     }
 
-    printf("[%ld]: Stopping\n", index);
+    atomic_store(&thread_pool[index]->has_thread, false);
+    atomic_store(&thread_pool[index]->has_task, false);
     return NULL;
 }
 
@@ -87,7 +80,9 @@ uint32_t tholder_create(tholder_t *__restrict __newthread,
 
     // Find the next open slot in global array
     size_t index = get_inactive_index();
-    printf("Sending task to [%ld]\n", index);
+
+    // Lock the house just to be safe. Getting past this line means the thread has gone to sleep but is not dead
+    pthread_mutex_lock(&thread_pool[index]->data_lock);
 
     // If there is no thread currently active at the given index, then spawn one
     bool expected = false;
@@ -96,18 +91,15 @@ uint32_t tholder_create(tholder_t *__restrict __newthread,
     {
         // Create a thread and detatch it
         pthread_t new_thread;
-        printf("Calling pthread_create()\n");
         pthread_create(&new_thread, NULL, auxiliary_function, (void *)index);
         pthread_detach(new_thread);
     }
 
-    // Else, no need to spawn a new thread, an existing thread will see the task and execute it
-
-    pthread_mutex_lock(&thread_pool[index]->data_lock);
-
     // Queue the task at the index and wake up the thread
     thread_pool[index]->function = (void *)__start_routine;
     thread_pool[index]->args = __arg;
+
+    // Wake up the thread living in this house
     pthread_cond_broadcast(&thread_pool[index]->work_cond_var);
 
     pthread_mutex_unlock(&thread_pool[index]->data_lock);
@@ -134,7 +126,7 @@ inline void tholder_init(size_t num_threads)
             atomic_init(&thread_pool[i]->has_thread, false);
             atomic_init(&thread_pool[i]->has_task, false);
             pthread_cond_init(&thread_pool[i]->work_cond_var, NULL);
-            pthread_mutex_init(&thread_pool[i]->work_lock, NULL);
+            pthread_mutex_init(&thread_pool[i]->wait_lock, NULL);
             pthread_mutex_init(&thread_pool[i]->data_lock, NULL);
         }
     }
