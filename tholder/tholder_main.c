@@ -1,5 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
+
+#include <unistd.h>
+
 #include "tholder.h"
 
 atomic_int bruh_int = ATOMIC_VAR_INIT(0);
@@ -23,17 +26,20 @@ int main(int argc, char *argv[])
     sscanf(argv[1], "%lu", &num_threads);
 
     tholder_t dummy[num_threads];
+    tholder_init(1);
 
     // Some parallel work
     for (size_t i = 0; i < num_threads; i++)
     {
-        tholder_create(&dummy[i], NULL, bruh, NULL);
+        tholder_create(&dummy[i], NULL, bruh, (void *)i);
     }
 
-    printf("Finished launching threads. Press ENTER to end program");
-    getchar();
+    usleep(2e5);
+    
     int tasks_completed = atomic_load(&bruh_int);
     printf("%d tasks finished\n", tasks_completed);
+    
+    // Free up memory
     tholder_destroy();
     return tasks_completed;
 }
