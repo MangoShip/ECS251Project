@@ -19,6 +19,13 @@ thread_data *get_inactive_index()
     size_t index = 0;
     bool expected = false;
     bool desired = true;
+
+    // If the region is not initialized, init with DEFAULT_MAX_THREADS
+    // This first if statement is meant to protect threads from unnecessary lock contention
+    if (thread_pool == NULL)
+    {
+        tholder_init(DEFAULT_MAX_THREADS);
+    }
     
     // continuously loop through the array
     while (true)
@@ -51,6 +58,8 @@ thread_data *get_inactive_index()
             if (thread_pool == NULL)
                 exit(EXIT_FAILURE);
 
+            printf("RESIZED THREAS POOL TO %ld\n", thread_pool_size);
+
             pthread_mutex_unlock(&thread_pool_lock);
         } 
     }
@@ -65,38 +74,39 @@ void *auxiliary_function(void *args)
     thread_data *td = (thread_data *)args;
     struct timespec timeout;
 
-    // Attempt to acquire the lock. If we failed, then someone is trying to give us work
-    // Additionally check td->has_task as someone may have given us work and then unlocked data_lock
-    while ((lock_busy = pthread_mutex_trylock(&td->data_lock)) || atomic_load(&td->has_task))
+    // Check the has_task flag to see if there is work to be done
+    // Additionally, try grabbing the lock. If it is busy, someone is trying to give us work
+    while (atomic_load(&td->has_task) || (lock_busy = pthread_mutex_trylock(&td->data_lock)))
     {
-        if (ret == ETIMEDOUT)
-            printf("[%ld] Woken up by main thread running task %ld\n", td->index, (size_t)td->args);
-        else if (ret == -1) {
-            printf("[%ld] Waking up via startup running task %ld\n", td->index, (size_t)td->args);
-        } else {
-            printf("[%ld] Waking up via timeout running task %ld\n", td->index, (size_t)td->args);
-        }
+        /*if (ret == ETIMEDOUT)*/
+        /*    printf("[%ld] Woken up by main thread running task %ld\n", td->index, (size_t)td->args);*/
+        /*else if (ret == -1) {*/
+        /*    printf("[%ld] Waking up via startup running task %ld\n", td->index, (size_t)td->args);*/
+        /*} else {*/
+        /*    printf("[%ld] Waking up via timeout running task %ld\n", td->index, (size_t)td->args);*/
+        /*}*/
 
         // Lock the house, nobody can give us more work while we're working!
         if (lock_busy) {
             pthread_mutex_lock(&td->data_lock);
-            printf("[%ld] Someone else had the lock, we're taking it now\n", td->index);
+            /*printf("[%ld] Someone else had the lock, we're taking it now\n", td->index);*/
         }
         
         // After acquiring the lock, check again to see if there really is work to do 
         if (!atomic_load(&td->has_task))
         {
-            printf("Woke up but found no work to do, going back to sleep\n");
+            /*printf("Woke up but found no work to do, going back to sleep\n");*/
             continue;
         }
-        
 
         // Call the function
-        td->function(td->args);
+        if (td->function && td->args)
+            td->function(td->args);
+        td->function = td->args = NULL;
 
         // Set sleep timer
         clock_gettime(CLOCK_REALTIME, &timeout);
-        timeout.tv_nsec += 10000;
+        timeout.tv_nsec += 1000000;
 
         atomic_store(&td->has_task, false);
 
@@ -108,7 +118,6 @@ void *auxiliary_function(void *args)
         ret = pthread_cond_timedwait(&td->work_cond_var, &td->wait_lock, &timeout);
         pthread_mutex_unlock(&td->wait_lock);
 
-        
         // If a thread is woken up prematurely, it is assumed that there is work to do
         // Thus, no need to check the return code of `pthread_cond_timedwait()`
         // Just rerun loop and check has_task condition
@@ -125,20 +134,13 @@ uint32_t tholder_create(tholder_t *__restrict __newthread,
                         void *(*__start_routine)(void *),
                         void *__restrict __arg)
 {
-    // If the region is not initialized, init with DEFAULT_MAX_THREADS
-    // This first if statement is meant to protect threads from unnecessary lock contention
-    if (thread_pool == NULL)
-    {
-        tholder_init(DEFAULT_MAX_THREADS);
-    }
 
     // Find the next open slot in global array
     thread_data *td = get_inactive_index();
-    atomic_store(&td->has_task, true); 
     
     // Lock the house just to be safe. Getting past this line means the thread has gone to sleep but is not dead
     pthread_mutex_lock(&td->data_lock);
-    printf("Sending task to [%ld]\n", td->index);
+    /*printf("Sending task to [%ld]\n", td->index);*/
     
 
     // If there is no thread currently active at the given index, then spawn one
@@ -146,7 +148,7 @@ uint32_t tholder_create(tholder_t *__restrict __newthread,
     bool desired = true;
     if (!atomic_load(&td->has_thread) && atomic_compare_exchange_strong(&td->has_thread, &expected, &desired))
     {
-        // Create a thread and detatch it
+        // Create a thread and detatch it. This means it will auto-cleanup on exit
         pthread_t new_thread;
         pthread_create(&new_thread, NULL, auxiliary_function, (void *)td);
         pthread_detach(new_thread);
@@ -172,7 +174,7 @@ thread_data *thread_data_init(size_t index)
     td->args = NULL;
     td->function = NULL;
     atomic_init(&td->has_thread, false);
-    atomic_init(&td->has_task, false);
+    atomic_init(&td->has_task, true);
     pthread_cond_init(&td->work_cond_var, NULL);
     pthread_mutex_init(&td->wait_lock, NULL);
     pthread_mutex_init(&td->data_lock, NULL);
@@ -183,7 +185,7 @@ thread_data *thread_data_init(size_t index)
 inline void tholder_init(size_t num_threads)
 {
     pthread_mutex_lock(&thread_pool_lock);
-    printf("[tholder.c] Initializing tholder with %ld threads\n", num_threads);
+    /*printf("[tholder.c] Initializing tholder with %ld threads\n", num_threads);*/
     // After acquiring the lock, check if region is still uninit before moving forward
     if (thread_pool == NULL)
     {
@@ -197,7 +199,7 @@ inline void tholder_init(size_t num_threads)
 inline void tholder_destroy()
 {
     pthread_mutex_lock(&thread_pool_lock);
-    printf("[tholder.c] Destroying thread pool\n");
+    /*printf("[tholder.c] Destroying thread pool\n");*/
 
     if (thread_pool != NULL)
     {
