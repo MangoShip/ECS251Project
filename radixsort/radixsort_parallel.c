@@ -70,6 +70,14 @@ struct new_index_arg {
   int *hist;
   int *new_indexes;
 };
+struct rewrite_arg {
+  int start_index;
+  int end_index;
+
+  int *A;
+  int *new_A;
+  int *new_indexes;
+};
 //-----------------------------------------------------
 // PThread Tasks
 // Collect number of 0 and 1 bits in local section
@@ -85,7 +93,6 @@ void *build_local_hist(void *arg) {
     // Build a histogram of 0 or 1 bit
     thr_arg->local_hist[bit]++;
   }
-  return 0;
 }
 // Compute new index for each element
 void *compute_new_indexes(void *arg) {
@@ -98,8 +105,6 @@ void *compute_new_indexes(void *arg) {
     offset_1bit += thr_arg->hist[(i * 2) + 1];
   }
 
-  //printf("Thread #%d: offset_0bit: %d, offset_1bit: %d\n", thr_arg->thread_id, offset_0bit, offset_1bit);
-
   for (int i = thr_arg->start_index; i < thr_arg->end_index; i++) {
     if (get_kth_bit(thr_arg->A[i], thr_arg->k)) { // bit = 1
       thr_arg->new_indexes[i] = thr_arg->total_0bits + offset_1bit++;
@@ -107,6 +112,14 @@ void *compute_new_indexes(void *arg) {
     else {
       thr_arg->new_indexes[i] = offset_0bit++;
     }
+  }
+}
+// Rewrite A with new indexes
+void *rewrite_A(void *arg) {
+  struct rewrite_arg *thr_arg = (struct rewrite_arg *) arg;
+
+  for (int i = thr_arg->start_index; i < thr_arg->end_index; i++) {
+    thr_arg->new_A[thr_arg->new_indexes[i]] = thr_arg->A[i];
   }
 }
 //-----------------------------------------------------
@@ -132,6 +145,7 @@ int main(int argc, char *argv[]) {
   // Allocate memory for thread argument (building histogram)
   struct hist_arg *hist_args = (struct hist_arg *)malloc(sizeof(struct hist_arg) * num_threads);
   struct new_index_arg *new_index_args = (struct new_index_arg *)malloc(sizeof(struct new_index_arg) * num_threads);
+  struct rewrite_arg *rewrite_args = (struct rewrite_arg *)malloc(sizeof(struct rewrite_arg) * num_threads);
 
   struct timespec start_time, end_time;
 
@@ -151,13 +165,13 @@ int main(int argc, char *argv[]) {
     A[i] = i;
   }
   shuffle_list(A, N);
-  //print_list(A, N);
 
   // Get the highest bit position based on the maximum number
   int max_k = get_max_bit(N - 1);
   printf("Number of iterations: %d\n", max_k);
   
   // Main loop for radix sort
+  int *save_A = A;
   int *new_indexes = malloc(N * sizeof(int));
   int *new_A = malloc(N * sizeof(int));
   int hist[2 * num_threads];
@@ -207,12 +221,21 @@ int main(int argc, char *argv[]) {
     clock_gettime(CLOCK_MONOTONIC, &timer4_start);
 
     // Rewrite a list with new index
-    for (int i = 0; i < N; i++) {
-      new_A[new_indexes[i]] = A[i];
+    for (int thr_id = 0; thr_id < num_threads; thr_id++) {
+      int start_index = local_N * thr_id;
+      struct rewrite_arg arg = {start_index, MIN(start_index + local_N, N), A, new_A, new_indexes};
+      rewrite_args[thr_id] = arg;
+      pthread_create(&thread_array[thr_id], NULL, rewrite_A, (void *)&rewrite_args[thr_id]);
     }
-    for (int i = 0; i < N; i++) {
-      A[i] = new_A[i];
+
+    for (int thr_id = 0; thr_id < num_threads; thr_id++) {
+      pthread_join(thread_array[thr_id], NULL);
     }
+    // Re-route pointer A
+    A = new_A;
+    new_A = save_A;
+    save_A = A;
+
     clock_gettime(CLOCK_MONOTONIC, &timer4_end);
     time4 += difftimespec_ns(timer4_end, timer4_start); 
 

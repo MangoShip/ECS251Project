@@ -4,7 +4,7 @@
 #       executable, you need to modify this Makefile.
 
 # Name of binary file
-PRODUCT := radixsort_seq radixsort_parallel atomic_test
+PRODUCT := radixsort_seq radixsort_parallel
 
 # Flags for debug mode
 DEBUG_FLAGS := -g -DDEBUG -O0
