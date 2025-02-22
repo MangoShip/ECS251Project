@@ -3,9 +3,11 @@
 #include <pthread.h>
 #include <time.h>
 #include <math.h>
+#include <string.h>
 
-#define MIN_SIZE_FOR_PARALLEL 10  // Minimum subarray size to use parallel threads
-#define THREAD_STACK_SIZE (1 << 20) // 1 MB stack for each thread
+// Remove the macros and replace them with global variables with default values.
+int global_min_parallel_size = 10;       // Default minimum subarray size for parallel threads
+int global_thread_stack_size = (1 << 20);  // Default thread stack size (1 MB)
 
 // Global maximum depth for parallel recursion, computed from desired thread count.
 int global_max_depth;
@@ -89,7 +91,7 @@ void merge_sort_depth(int *arr, int left, int right, int depth)
         int mid = left + (right - left) / 2;
 
         // Spawn threads only if depth is below global_max_depth and subarray is large
-        if (depth < global_max_depth && (right - left) >= MIN_SIZE_FOR_PARALLEL)
+        if (depth < global_max_depth && (right - left) >= global_min_parallel_size)
         {
             pthread_t tid1, tid2;
             merge_args *args1 = malloc(sizeof(merge_args));
@@ -113,7 +115,7 @@ void merge_sort_depth(int *arr, int left, int right, int depth)
 
             pthread_attr_t attr;
             pthread_attr_init(&attr);
-            pthread_attr_setstacksize(&attr, THREAD_STACK_SIZE);
+            pthread_attr_setstacksize(&attr, global_thread_stack_size);
 
             if (pthread_create(&tid1, &attr, merge_sort_thread, args1) != 0)
             {
@@ -170,10 +172,10 @@ void print_array(int *arr, int n)
 
 int main(int argc, char *argv[])
 {
-    // Expect at least two arguments: number of threads and at least one size
+    // Existing usage: at least <num_threads> and one size.
     if (argc < 3)
     {
-        fprintf(stderr, "Usage: %s <num_threads> <size1> [size2 ...]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <num_threads> [ -m <min_parallel_size> ] [ -s <thread_stack_size> ] <size1> [size2 ...]\n", argv[0]);
         exit(1);
     }
 
@@ -186,13 +188,32 @@ int main(int argc, char *argv[])
     // Compute global_max_depth = ceil(log2(desired_threads))
     global_max_depth = (int)ceil(log2(desired_threads));
 
-    srand(0);
+    // Parse optional flags: -m and -s before the list of sizes.
+    int arg_index = 2;
+    while (arg_index < argc && argv[arg_index][0] == '-')
+    {
+        if (strcmp(argv[arg_index], "-m") == 0 && arg_index + 1 < argc)
+        {
+            global_min_parallel_size = atoi(argv[arg_index + 1]);
+            arg_index += 2;
+        }
+        else if (strcmp(argv[arg_index], "-s") == 0 && arg_index + 1 < argc)
+        {
+            global_thread_stack_size = atoi(argv[arg_index + 1]);
+            arg_index += 2;
+        }
+        else
+        {
+            arg_index++;
+        }
+    }
+    int num_sizes = argc - arg_index;
 
-    int num_sizes = argc - 2;
+    srand(0);
 
     for (int t = 0; t < num_sizes; t++)
     {
-        int n = atoi(argv[t + 2]);
+        int n = atoi(argv[arg_index + t]);
         if (n <= 0)
         {
             fprintf(stderr, "Size must be positive.\n");
@@ -206,7 +227,6 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Memory allocation failed\n");
             exit(1);
         }
-
         for (int i = 0; i < n; i++)
         {
             orig[i] = rand() % n;
@@ -214,14 +234,13 @@ int main(int argc, char *argv[])
         // Shuffle the original array
         shuffle(orig, n);
 
-        // Create copies for parallel and serial sorting
+        // Create copy for parallel sorting
         int *arr_parallel = malloc(n * sizeof(int));
         if (!arr_parallel)
         {
             fprintf(stderr, "Memory allocation failed\n");
             exit(1);
         }
-
         for (int i = 0; i < n; i++)
         {
             arr_parallel[i] = orig[i];
@@ -241,13 +260,17 @@ int main(int argc, char *argv[])
         printf("Test case %d, size %d\n", t + 1, n);
         printf("Parallel merge sort time: %f nanoseconds\n", time_parallel);
 
-        // For small arrays, print the sorted output
         if (n <= 100)
         {
             printf("Parallel Sorted: ");
             print_array(arr_parallel, n);
         }
+
+        //For passing the printed output to the CSV output line for the Python pipeline
+        printf("PERFDATA,%d,parallelMergeSort,%d,%d,%d,%f\n", n, desired_threads, global_min_parallel_size, global_thread_stack_size, time_parallel);
+
         free(arr_parallel);
     }
+
     return 0;
 }

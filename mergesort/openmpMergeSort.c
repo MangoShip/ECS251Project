@@ -3,9 +3,11 @@
 #include <time.h>
 #include <omp.h>
 #include <math.h>
+#include <string.h>
 
-// User-defined threshold for parallelism
-#define MIN_SIZE_FOR_PARALLEL 1000
+// Replace the macro with a global variable.
+int global_min_parallel_size = 1000;  // Default minimum subarray size for OpenMP tasks
+int global_thread_stack_size = 0;       // Not used in OpenMP, but recorded for CSV output
 
 // Global maximum recursion depth for parallelism, computed from the desired thread count.
 int global_max_depth;
@@ -50,18 +52,6 @@ void merge(int *arr, int left, int mid, int right)
     free(right_arr);
 }
 
-// Serial merge sort (pure recursion without OpenMP)
-void merge_sort_serial(int *arr, int left, int right)
-{
-    if (left < right)
-    {
-        int mid = left + (right - left) / 2;
-        merge_sort_serial(arr, left, mid);
-        merge_sort_serial(arr, mid + 1, right);
-        merge(arr, left, mid, right);
-    }
-}
-
 // Recursive parallel merge sort with a depth parameter using OpenMP tasks
 void merge_sort_omp_depth(int *arr, int left, int right, int depth)
 {
@@ -69,7 +59,7 @@ void merge_sort_omp_depth(int *arr, int left, int right, int depth)
     {
         int mid = left + (right - left) / 2;
         // If we are below the maximum parallel depth and the subarray is large enough, spawn tasks.
-        if (depth < global_max_depth && (right - left) >= MIN_SIZE_FOR_PARALLEL)
+        if (depth < global_max_depth && (right - left) >= global_min_parallel_size)
         {
 #pragma omp task shared(arr) firstprivate(left, mid, depth)
             {
@@ -127,10 +117,10 @@ void print_array(int *arr, int n)
 
 int main(int argc, char *argv[])
 {
-    // Expect at least two arguments: number of threads and one or more sizes
+    // Existing usage: at least <num_threads> and one size.
     if (argc < 3)
     {
-        fprintf(stderr, "Usage: %s <num_threads> <size1> [size2 ...]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <num_threads> [ -m <min_parallel_size> ] [ -s <thread_stack_size> ] <size1> [size2 ...]\n", argv[0]);
         exit(1);
     }
 
@@ -141,17 +131,36 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    // Compute global_max_depth = ceil(log2(desired_threads))
     global_max_depth = (int)ceil(log2(desired_threads));
 
-    // Set the desired number of threads for OpenMP
     omp_set_num_threads(desired_threads);
 
-    int num_sizes = argc - 2;
+    // Parse optional flags: -m and -s before the list of sizes.
+    int arg_index = 2;
+    while (arg_index < argc && argv[arg_index][0] == '-')
+    {
+        if (strcmp(argv[arg_index], "-m") == 0 && arg_index + 1 < argc)
+        {
+            global_min_parallel_size = atoi(argv[arg_index + 1]);
+            arg_index += 2;
+        }
+        else if (strcmp(argv[arg_index], "-s") == 0 && arg_index + 1 < argc)
+        {
+            global_thread_stack_size = atoi(argv[arg_index + 1]);
+            arg_index += 2;
+        }
+        else
+        {
+            arg_index++;
+        }
+    }
+    int num_sizes = argc - arg_index;
+
+    srand(0);
 
     for (int t = 0; t < num_sizes; t++)
     {
-        int n = atoi(argv[t + 2]);
+        int n = atoi(argv[arg_index + t]);
         if (n <= 0)
         {
             fprintf(stderr, "Size must be positive.\n");
@@ -172,10 +181,9 @@ int main(int argc, char *argv[])
         // Shuffle the original array
         shuffle(orig, n);
 
-        // Create copies for parallel and serial sorting
+        // Create copy for parallel sorting
         int *arr_parallel = malloc(n * sizeof(int));
-        int *arr_serial = malloc(n * sizeof(int));
-        if (!arr_parallel || !arr_serial)
+        if (!arr_parallel)
         {
             fprintf(stderr, "Memory allocation failed\n");
             exit(1);
@@ -183,12 +191,11 @@ int main(int argc, char *argv[])
         for (int i = 0; i < n; i++)
         {
             arr_parallel[i] = orig[i];
-            arr_serial[i] = orig[i];
         }
         free(orig);
 
         struct timespec start_time, end_time;
-        double time_parallel, time_serial;
+        double time_parallel;
 
         // Measure parallel merge sort time using clock_gettime
         clock_gettime(CLOCK_MONOTONIC, &start_time);
@@ -196,26 +203,19 @@ int main(int argc, char *argv[])
         clock_gettime(CLOCK_MONOTONIC, &end_time);
         time_parallel = difftimespec_ns(end_time, start_time);
 
-        // Measure serial merge sort time using clock_gettime
-        clock_gettime(CLOCK_MONOTONIC, &start_time);
-        merge_sort_serial(arr_serial, 0, n - 1);
-        clock_gettime(CLOCK_MONOTONIC, &end_time);
-        time_serial = difftimespec_ns(end_time, start_time);
-
         printf("Test case %d, size %d\n", t + 1, n);
         printf("Parallel merge sort time: %f nanoseconds\n", time_parallel);
-        printf("Serial merge sort time:   %f nanoseconds\n", time_serial);
 
-        // For small arrays, print the sorted output
         if (n <= 100)
         {
             printf("Parallel Sorted: ");
             print_array(arr_parallel, n);
-            printf("Serial Sorted:   ");
-            print_array(arr_serial, n);
         }
+
+        //For passing the printed output to the CSV output line for the Python pipeline
+        printf("PERFDATA,%d,openmpMergeSort,%d,%d,%d,%f\n", n, desired_threads, global_min_parallel_size, global_thread_stack_size, time_parallel);
+
         free(arr_parallel);
-        free(arr_serial);
     }
     return 0;
 }

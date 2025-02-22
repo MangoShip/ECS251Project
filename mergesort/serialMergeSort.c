@@ -53,7 +53,7 @@ void merge(int *arr, int left, int mid, int right)
     free(right_arr);
 }
 
-// Serial merge sort which is of a pure recursive implementation without threading
+// Serial merge sort (pure recursive implementation without threading)
 void merge_sort_serial(int *arr, int left, int right)
 {
     if (left < right)
@@ -90,7 +90,6 @@ void print_array(int *arr, int n)
 
 int main(int argc, char *argv[])
 {
-
     if (argc < 2)
     {
         fprintf(stderr, "Usage: %s <size1> [size2 ...]\n", argv[0]);
@@ -125,7 +124,7 @@ int main(int argc, char *argv[])
         // Shuffle the original array
         shuffle(orig, n);
 
-        // Create copies for parallel and serial sorting
+        // Create a copy for serial sorting
         int *arr_serial = malloc(n * sizeof(int));
         if (!arr_serial)
         {
@@ -153,12 +152,15 @@ int main(int argc, char *argv[])
         printf("Test case %d, size %d\n", t + 1, n);
         printf("Serial merge sort time:   %f nanoseconds\n", time_serial);
 
-        // For small arrays, print the sorted output
         if (n <= 100)
         {
             printf("Serial Sorted:   ");
             print_array(arr_serial, n);
         }
+
+        //For passing the printed output to the CSV output line for the Python pipeline
+        printf("PERFDATA,%d,serialMergeSort,1,0,0,%f\n", n, time_serial);
+
         free(arr_serial);
     }
     return 0;
