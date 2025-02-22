@@ -2,15 +2,15 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <time.h>
-#include <pthread.h>
+#include <omp.h>
 
-#define MAX_NODES 100000000  // maximum allowed nodes
+#define MAX_VERTICES 100000000  // maximum allowed nodes
 
 // Structure for an adjacency list node
 typedef struct {
     int *neighbors; // dynamic array of neighbor indices
     int count;      // current number of neighbors
-    int capacity;   // allocated capacity of the neighbors array
+    int capacity;   // allocated capacity of neighbors array
 } AdjList;
 
 // Initialize an adjacency list
@@ -20,7 +20,7 @@ void initAdjList(AdjList *list) {
     list->capacity = 0;
 }
 
-// Add a neighbor to the adjacency list; reallocates memory as needed
+// Add a neighbor to the adjacency list; reallocates as needed
 void addNeighbor(AdjList *list, int v) {
     if (list->count == list->capacity) {
         int new_capacity = (list->capacity == 0) ? 4 : list->capacity * 2;
@@ -35,14 +35,14 @@ void addNeighbor(AdjList *list, int v) {
     list->neighbors[list->count++] = v;
 }
 
-// Add an undirected edge between nodes u and v
+// Add an undirected edge between u and v
 void addEdge(AdjList *graph, int u, int v) {
     addNeighbor(&graph[u], v);
     addNeighbor(&graph[v], u);
 }
 
-// Generate a random graph with n nodes and average degree ~10.
-// We target m = n * 5 undirected edges (each edge stored twice).
+// Generate a random graph with n nodes and an average degree of about 10.
+// We target m = n * 5 undirected edges (each edge is stored twice).
 void generate_random_graph(AdjList *graph, int n) {
     // Initialize each node's adjacency list
     for (int i = 0; i < n; i++) {
@@ -60,48 +60,16 @@ void generate_random_graph(AdjList *graph, int n) {
     }
 }
 
-// Compute the difference between two timespecs in nanoseconds
+// Compute difference between two timespecs in nanoseconds
 double difftimespec_ns(const struct timespec after, const struct timespec before) {
     return ((double)after.tv_sec - (double)before.tv_sec) * 1e9 +
            ((double)after.tv_nsec - (double)before.tv_nsec);
 }
 
-// Structure for thread arguments used in parallel BFS
-struct thread_args {
-    int start;             // start index in the current frontier array
-    int end;               // end index (exclusive) in the current frontier array
-    int *current_frontier; // pointer to the current frontier array
-    int *next_frontier;    // pointer to the shared next frontier array
-    int *next_size;        // pointer to the shared next frontier size
-    AdjList *graph;        // pointer to the graph (array of AdjList)
-    bool *visited;         // pointer to the global visited array
-    pthread_mutex_t *mutex; // pointer to the mutex for synchronizing access
-};
-
-// Thread function for processing a portion of the current frontier
-void *bfs_thread(void *arg) {
-    struct thread_args *args = (struct thread_args *)arg;
-    for (int i = args->start; i < args->end; i++) {
-        int u = args->current_frontier[i];
-        for (int j = 0; j < args->graph[u].count; j++) {
-            int v = args->graph[u].neighbors[j];
-            pthread_mutex_lock(args->mutex);
-            if (!args->visited[v]) {
-                args->visited[v] = true;
-                int pos = *(args->next_size);
-                args->next_frontier[pos] = v;
-                (*(args->next_size))++;
-            }
-            pthread_mutex_unlock(args->mutex);
-        }
-    }
-    return NULL;
-}
-
-// Parallel BFS using pthreads (level-synchronous) on an adjacency list graph.
-// BFS always starts at node 0. Instead of printing every vertex,
-// it outputs only the total number of vertices reached.
-void parallel_bfs_pthread(AdjList *graph, int n, int startVertex, int num_threads) {
+// Parallel BFS using OpenMP (level-synchronous) on an adjacency list graph.
+// The BFS always starts from node 0. Instead of printing every vertex visited,
+// it only outputs the total number of vertices reached.
+void parallel_bfs_omp(AdjList *graph, int n, int startVertex, int num_threads) {
     bool *visited = calloc(n, sizeof(bool));
     if (visited == NULL) {
         fprintf(stderr, "Memory allocation failed for visited\n");
@@ -120,57 +88,33 @@ void parallel_bfs_pthread(AdjList *graph, int n, int startVertex, int num_thread
     current_size = 1;
     visited[startVertex] = true;
 
-    pthread_mutex_t mutex;
-    pthread_mutex_init(&mutex, NULL);
+    omp_set_num_threads(num_threads);
 
     while (current_size > 0) {
         next_size = 0;
-        pthread_t *threads = malloc(num_threads * sizeof(pthread_t));
-        struct thread_args *args = malloc(num_threads * sizeof(struct thread_args));
-        if (threads == NULL || args == NULL) {
-            fprintf(stderr, "Memory allocation failed for threads\n");
-            exit(1);
+
+        #pragma omp parallel for schedule(dynamic)
+        for (int i = 0; i < current_size; i++) {
+            int u = current_frontier[i];
+            for (int j = 0; j < graph[u].count; j++) {
+                int v = graph[u].neighbors[j];
+                #pragma omp critical
+                {
+                    if (!visited[v]) {
+                        visited[v] = true;
+                        next_frontier[next_size] = v;
+                        next_size++;
+                    }
+                }
+            }
         }
 
-        // Divide the current frontier among threads
-        int chunk_size = current_size / num_threads;
-        int remainder = current_size % num_threads;
-        int index = 0;
-        for (int i = 0; i < num_threads; i++) {
-            args[i].start = index;
-            int extra = (i < remainder) ? 1 : 0;
-            args[i].end = index + chunk_size + extra;
-            args[i].current_frontier = current_frontier;
-            args[i].next_frontier = next_frontier;
-            args[i].next_size = &next_size;
-            args[i].graph = graph;
-            args[i].visited = visited;
-            args[i].mutex = &mutex;
-            index = args[i].end;
-        }
-
-        // Create threads to process the current frontier
-        for (int i = 0; i < num_threads; i++) {
-            if (args[i].start < args[i].end)
-                pthread_create(&threads[i], NULL, bfs_thread, (void *)&args[i]);
-        }
-        // Wait for all threads to finish
-        for (int i = 0; i < num_threads; i++) {
-            if (args[i].start < args[i].end)
-                pthread_join(threads[i], NULL);
-        }
-
-        free(threads);
-        free(args);
-
-        // Prepare for the next level: update the current frontier
+        // Prepare for next level: update current_frontier
         for (int i = 0; i < next_size; i++) {
             current_frontier[i] = next_frontier[i];
         }
         current_size = next_size;
     }
-
-    pthread_mutex_destroy(&mutex);
 
     // Count the number of visited nodes
     int visited_count = 0;
@@ -180,6 +124,7 @@ void parallel_bfs_pthread(AdjList *graph, int n, int startVertex, int num_thread
         }
     }
 
+    // Output only the size (i.e. the total number of vertices reached by BFS)
     printf("BFS visited count: %d\n", visited_count);
 
     free(visited);
@@ -195,8 +140,9 @@ int main(int argc, char *argv[]) {
 
     int n = atoi(argv[1]);
     int num_threads = atoi(argv[2]);
-    if (n <= 0 || n > MAX_NODES) {
-        fprintf(stderr, "Number of nodes must be positive and no more than %d\n", MAX_NODES);
+
+    if (n <= 0 || n > MAX_VERTICES) {
+        fprintf(stderr, "Number of nodes must be positive and no more than %d\n", MAX_VERTICES);
         exit(1);
     }
     if (num_threads <= 0) {
@@ -223,11 +169,11 @@ int main(int argc, char *argv[]) {
     double elapsed_time;
 
     clock_gettime(CLOCK_MONOTONIC, &start_time);
-    parallel_bfs_pthread(graph, n, 0, num_threads);
+    parallel_bfs_omp(graph, n, 0, num_threads);
     clock_gettime(CLOCK_MONOTONIC, &end_time);
 
     elapsed_time = difftimespec_ns(end_time, start_time);
-    printf("Parallel (pthread) BFS traversal time: %f ns\n", elapsed_time);
+    printf("Parallel (OpenMP) BFS traversal time: %f ns\n", elapsed_time);
 
     // Free the graph memory
     for (int i = 0; i < n; i++) {

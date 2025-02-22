@@ -3,155 +3,163 @@
 #include <stdbool.h>
 #include <time.h>
 
-#define MAX_VERTICES 100
+#define MAX_NODES 100000000  // Maximum allowed nodes
 
-// Calculate the difference between two timespecs in nanoseconds
+// Structure for an adjacency list node
+typedef struct {
+    int *neighbors; // Dynamic array of neighbor indices
+    int count;      // Current number of neighbors
+    int capacity;   // Allocated capacity for the neighbors array
+} AdjList;
+
+// Initialize an adjacency list
+void initAdjList(AdjList *list) {
+    list->neighbors = NULL;
+    list->count = 0;
+    list->capacity = 0;
+}
+
+// Add a neighbor to the adjacency list; reallocates memory as needed
+void addNeighbor(AdjList *list, int v) {
+    if (list->count == list->capacity) {
+        int new_capacity = (list->capacity == 0) ? 4 : list->capacity * 2;
+        int *new_neighbors = realloc(list->neighbors, new_capacity * sizeof(int));
+        if (new_neighbors == NULL) {
+            fprintf(stderr, "Memory allocation failed\n");
+            exit(1);
+        }
+        list->neighbors = new_neighbors;
+        list->capacity = new_capacity;
+    }
+    list->neighbors[list->count++] = v;
+}
+
+// Add an undirected edge between nodes u and v
+void addEdge(AdjList *graph, int u, int v) {
+    addNeighbor(&graph[u], v);
+    addNeighbor(&graph[v], u);
+}
+
+// Generate a random graph with n nodes and an average degree of about 10.
+// We target m = n * 5 undirected edges (each edge is stored twice).
+void generate_random_graph(AdjList *graph, int n) {
+    // Initialize each node's adjacency list
+    for (int i = 0; i < n; i++) {
+        initAdjList(&graph[i]);
+    }
+    long long m = (long long)n * 5;  // target number of undirected edges
+    for (long long i = 0; i < m; i++) {
+        int u = rand() % n;
+        int v = rand() % n;
+        while (u == v) { // avoid self-loop
+            v = rand() % n;
+        }
+        // Duplicate edges are very unlikely in a sparse graph; ignore duplicates.
+        addEdge(graph, u, v);
+    }
+}
+
+// Compute the difference between two timespecs in nanoseconds
 double difftimespec_ns(const struct timespec after, const struct timespec before) {
     return ((double)after.tv_sec - (double)before.tv_sec) * 1e9 +
            ((double)after.tv_nsec - (double)before.tv_nsec);
 }
 
-// Graph structure using an adjacency matrix
-struct Graph {
-    int vertices;
-    int adjMatrix[MAX_VERTICES][MAX_VERTICES];
-};
-
-// Queue structure for BFS
-struct Queue {
-    int items[MAX_VERTICES];
-    int front;
-    int rear;
-};
-
-// Initialize the queue
-void initQueue(struct Queue* q) {
-    q->front = -1;
-    q->rear = -1;
-}
-
-// Check if the queue is empty
-bool isEmpty(struct Queue* q) {
-    return q->front == -1;
-}
-
-// Enqueue an element into the queue
-void enqueue(struct Queue* q, int value) {
-    if (q->rear == MAX_VERTICES - 1) {
-        fprintf(stderr, "Queue is full\n");
-        return;
+// Serial BFS (level-synchronous) on an adjacency list graph.
+// BFS always starts from node 0 and only outputs the total number of vertices reached.
+void serial_bfs(AdjList *graph, int n, int start) {
+    bool *visited = calloc(n, sizeof(bool));
+    if (visited == NULL) {
+        fprintf(stderr, "Memory allocation failed for visited\n");
+        exit(1);
     }
-    if (q->front == -1)
-        q->front = 0;
-    q->items[++q->rear] = value;
-}
-
-// Dequeue an element from the queue
-int dequeue(struct Queue* q) {
-    if (isEmpty(q)) {
-        fprintf(stderr, "Queue is empty\n");
-        return -1;
+    int *current_frontier = malloc(n * sizeof(int));
+    int *next_frontier = malloc(n * sizeof(int));
+    if (current_frontier == NULL || next_frontier == NULL) {
+        fprintf(stderr, "Memory allocation failed for frontier arrays\n");
+        exit(1);
     }
-    int value = q->items[q->front];
-    q->front++;
-    if (q->front > q->rear)
-        q->front = q->rear = -1;
-    return value;
-}
+    int current_size = 0, next_size = 0;
 
-// BFS traversal function
-void bfs(struct Graph* graph, int startVertex) {
-    bool visited[MAX_VERTICES] = {false};
-    struct Queue q;
-    initQueue(&q);
+    // Initialize BFS with the start vertex
+    current_frontier[0] = start;
+    current_size = 1;
+    visited[start] = true;
 
-    visited[startVertex] = true;
-    enqueue(&q, startVertex);
-
-    while (!isEmpty(&q)) {
-        int currentVertex = dequeue(&q);
-        printf("%d ", currentVertex);
-
-        // Traverse all adjacent vertices of the current vertex
-        for (int i = 0; i < graph->vertices; i++) {
-            if (graph->adjMatrix[currentVertex][i] == 1 && !visited[i]) {
-                enqueue(&q, i);
-                visited[i] = true;
+    // Level-synchronous BFS loop
+    while (current_size > 0) {
+        next_size = 0;
+        for (int i = 0; i < current_size; i++) {
+            int u = current_frontier[i];
+            for (int j = 0; j < graph[u].count; j++) {
+                int v = graph[u].neighbors[j];
+                if (!visited[v]) {
+                    visited[v] = true;
+                    next_frontier[next_size++] = v;
+                }
             }
         }
-    }
-}
-
-// Initialize the graph: set the number of vertices and initialize the adjacency matrix to 0
-void initGraph(struct Graph* graph, int vertices) {
-    graph->vertices = vertices;
-    for (int i = 0; i < vertices; i++) {
-        for (int j = 0; j < vertices; j++) {
-            graph->adjMatrix[i][j] = 0;
+        // Prepare for next level: update current_frontier
+        for (int i = 0; i < next_size; i++) {
+            current_frontier[i] = next_frontier[i];
         }
+        current_size = next_size;
     }
-}
 
-// Add an undirected edge to the graph
-void addEdge(struct Graph* graph, int startVertex, int endVertex) {
-    graph->adjMatrix[startVertex][endVertex] = 1;
-    graph->adjMatrix[endVertex][startVertex] = 1;
+    // Count the number of visited nodes
+    int visited_count = 0;
+    for (int i = 0; i < n; i++) {
+        if (visited[i])
+            visited_count++;
+    }
+    // Output only the visited count
+    printf("BFS visited count: %d\n", visited_count);
+
+    free(visited);
+    free(current_frontier);
+    free(next_frontier);
 }
 
 int main(int argc, char *argv[]) {
-    // Command line arguments: program name + vertices + edges + 2*edges for edge pairs + startVertex
-    if (argc < 4) {
-        fprintf(stderr, "Usage: %s <vertices> <edges> <edge pairs...> <startVertex>\n", argv[0]);
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <number_of_nodes>\n", argv[0]);
         exit(1);
     }
 
-    int vertices = atoi(argv[1]);
-    int edges = atoi(argv[2]);
-
-    if (vertices > MAX_VERTICES) {
-        fprintf(stderr, "Vertices exceed maximum limit (%d).\n", MAX_VERTICES);
+    int n = atoi(argv[1]);
+    if (n <= 0 || n > MAX_NODES) {
+        fprintf(stderr, "Number of nodes must be positive and no more than %d\n", MAX_NODES);
         exit(1);
     }
 
-    if (argc != (2 * edges + 4)) {
-        fprintf(stderr, "Invalid number of arguments.\n");
-        fprintf(stderr, "Usage: %s <vertices> <edges> <edge pairs...> <startVertex>\n", argv[0]);
+    // Seed the random number generator
+    srand(time(NULL));
+
+    // Dynamically allocate the graph (an array of adjacency lists)
+    AdjList *graph = malloc(n * sizeof(AdjList));
+    if (graph == NULL) {
+        fprintf(stderr, "Memory allocation failed for graph\n");
         exit(1);
     }
 
-    struct Graph graph;
-    initGraph(&graph, vertices);
+    // Generate a random graph with n nodes
+    generate_random_graph(graph, n);
 
-    // Read each edge's two vertices from the command line
-    for (int i = 0; i < edges; i++) {
-        int u = atoi(argv[3 + 2 * i]);
-        int v = atoi(argv[3 + 2 * i + 1]);
-        if (u < 0 || u >= vertices || v < 0 || v >= vertices) {
-            fprintf(stderr, "Vertex indices must be in range 0 to %d.\n", vertices - 1);
-            exit(1);
-        }
-        addEdge(&graph, u, v);
-    }
-
-    int startVertex = atoi(argv[argc - 1]);
-    if (startVertex < 0 || startVertex >= vertices) {
-        fprintf(stderr, "Start vertex must be in range 0 to %d.\n", vertices - 1);
-        exit(1);
-    }
-
-    // Print test case information (test case number and input size)
-    printf("Test case 1, size %d\n", vertices);
+    printf("Test case 1, size %d\n", n);
 
     struct timespec start_time, end_time;
-    double elapsed_time;
-
-    // Get start time, perform BFS, and get end time
     clock_gettime(CLOCK_MONOTONIC, &start_time);
-    bfs(&graph, startVertex);
+    serial_bfs(graph, n, 0);
     clock_gettime(CLOCK_MONOTONIC, &end_time);
 
-    elapsed_time = difftimespec_ns(end_time, start_time);
-    printf("\nBFS traversal time: %f ns\n", elapsed_time);
+    double elapsed_time = difftimespec_ns(end_time, start_time);
+    printf("Serial BFS traversal time: %f ns\n", elapsed_time);
+
+    // Free the graph memory
+    for (int i = 0; i < n; i++) {
+        free(graph[i].neighbors);
+    }
+    free(graph);
 
     return 0;
 }
