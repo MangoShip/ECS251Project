@@ -8,18 +8,7 @@
 #include <unistd.h>
 
 
-typedef struct
-{
-	int tid;
-	int start, end;
-} Thread; 
-
-//Thread information
-pthread_t *Threads;
-Thread *Threads_data;
-
-//Input information, including thread count, graph count, and threshold
-int num_threads;
+//Input information, including graph count, and threshold
 int num_graphs;
 double threshold;
 
@@ -45,67 +34,15 @@ double difftimespec_ns(const struct timespec after, const struct timespec before
         + ((double)after.tv_nsec - (double)before.tv_nsec);
 }
 
-void create_threads(){
-	
-	// Allocate memory for threads
-	Threads = (pthread_t *)malloc(num_threads * sizeof(pthread_t));
-}
-
-void allocate_thread_data(){
-    double N_split =  (double) num_nodes / num_threads;
-    // Stores thread's data		
-	Threads_data = (Thread*)malloc(num_threads * sizeof(Thread));	
-	
-	// Split dataset into subsets, given to each thread
-	Threads_data[0].tid = 0;
-	Threads_data[0].start = 0;
-	Threads_data[0].end = floor(N_split);
-
-	for (int i = 1; i < num_threads; i++)
-	{
-		Threads_data[i].tid = i;
-		Threads_data[i].start = Threads_data[i - 1].end;
-		if (i < (num_threads - 1))
-		{
-			Threads_data[i].end = Threads_data[i].start + floor(N_split);
-		}
-		else
-		{
-			Threads_data[i].end = num_nodes;
-		}
-	}
-	
-	printf("\n");
-
-	for (int i = 0; i < num_threads; i++)
-	{
-		printf("Thread %d, start = %d, end = %d\n", Threads_data[i].tid, Threads_data[i].start, Threads_data[i].end);
-	}
-
-	printf("\n");
-}
-
-void *pagerank_parallel(void *arg){
-    Thread *thread_data = (Thread *) arg;
-    for (int i = thread_data->start; i < thread_data->end; i++){
-        for (int j = 0; j < num_nodes; j++){
-            new_eigen[i] += matrix[i][j] * eigen[j];
-        }
-    }
-}
-
 void pagerank(){
   double error = 100000;
   new_eigen = calloc(num_nodes, sizeof(double));
   while(error > threshold){
-    for (int i = 0; i < num_threads; i++)
-    {
-        pthread_create(&Threads[i], NULL, &pagerank_parallel, (void*) &Threads_data[i]);
+    for (int i = 0; i < num_nodes; i++){
+        for (int j = 0; j < num_nodes; j++){
+            new_eigen[i] += matrix[i][j] * eigen[j];
+        }
     }
-    for (int i = 0; i < num_threads; i++)
-	{
-		pthread_join(Threads[i], NULL);
-	}
     //Find the norm in order to normalize the new eigenvector
     double norm = 0;
     for(int i = 0; i < num_nodes; i++){
@@ -171,7 +108,6 @@ void create_matrix(){
 
 void free_all_data(){
     //Frees all data that is not going to be used for the second iteration (everything except threads)
-    free(Threads_data);
     free(eigen);
     free(new_eigen);
     for(int i = 0; i < num_nodes; i++){
@@ -183,7 +119,7 @@ void free_all_data(){
 
 int main(int argc, char** argv){
     if(argc < 5){
-        printf("Required 4 arguments: folder name containing graph data, number of graphs,threshold, number of threads");
+        printf("Required 3 arguments: folder name containing graph data, number of graphs,threshold");
         return -1;
     }
 
@@ -193,7 +129,6 @@ int main(int argc, char** argv){
     char filename[256];
     num_graphs = atoi(argv[2]);
     threshold = atof(argv[3]);
-    num_threads = atoi(argv[4]);
 
     //Timing for all iterations together
     for(int i = 0; i < num_graphs; i++){
