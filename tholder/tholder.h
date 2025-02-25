@@ -1,9 +1,9 @@
 #include <stdbool.h>
+#include <stdatomic.h>
 
 #include <unistd.h>
 #include <pthread.h>
 #include <semaphore.h>
-#include <stdatomic.h>
 
 #define DEFAULT_MAX_THREADS 8
 
@@ -15,7 +15,7 @@ typedef struct task_output
 {
     bool complete;
     void *output;
-    pthread_cond_t join;
+    pthread_mutex_t join;
 } task_output;
 
 typedef struct thread_data
@@ -35,16 +35,19 @@ typedef struct thread_data
     pthread_mutex_t data_lock;
     void *(*function)(void *);
     void *args;
+    task_output *output;
 } thread_data;
 
-u_int32_t tholder_create(tholder_t *__restrict __newthread,
+int tholder_create(tholder_t *__restrict __newthread,
                          const pthread_attr_t *__restrict __attr,
                          void *(*__start_routine)(void *),
                          void *__restrict __arg);
 
+int tholder_join(tholder_t th, void **thread_return);
+
 void tholder_init(size_t num_threads);
 
-thread_data *thread_data_init();
+thread_data *thread_data_init(size_t index);
 
 void tholder_destroy();
 

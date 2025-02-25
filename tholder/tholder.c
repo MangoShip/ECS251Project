@@ -1,11 +1,14 @@
+#include <cstdlib>
+#include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint-gcc.h>
-#include <errno.h>
 
 #include <sys/time.h>
+#include <time.h>
 
 #include "tholder.h"
+#include "pthread.h"
 
 /* library global variables */
 
@@ -39,9 +42,9 @@ thread_data *get_inactive_index()
         }
         expected = false;
         // if we find an open slot, use it
-        if (atomic_compare_exchange_weak(&thread_pool[index]->has_task, &expected, &desired))
+        if (!atomic_load(&thread_pool[index]->has_task))
         {
-            /*printf("Found non-busy slot at %ld\n", index);*/
+            //printf("Found non-busy slot at %ld\n", index);
             break;
         }
         // else, keep searching
@@ -58,7 +61,7 @@ thread_data *get_inactive_index()
             if (thread_pool == NULL)
                 exit(EXIT_FAILURE);
 
-            printf("RESIZED THREAS POOL TO %ld\n", thread_pool_size);
+            /*printf("RESIZED THREAS POOL TO %ld\n", thread_pool_size);*/
 
             pthread_mutex_unlock(&thread_pool_lock);
         } 
@@ -76,7 +79,7 @@ void *auxiliary_function(void *args)
 
     // Check the has_task flag to see if there is work to be done
     // Additionally, try grabbing the lock. If it is busy, someone is trying to give us work
-    while (atomic_load(&td->has_task) || (lock_busy = pthread_mutex_trylock(&td->data_lock)))
+    while (true)
     {
         /*if (ret == ETIMEDOUT)*/
         /*    printf("[%ld] Woken up by main thread running task %ld\n", td->index, (size_t)td->args);*/
@@ -86,23 +89,15 @@ void *auxiliary_function(void *args)
         /*    printf("[%ld] Waking up via timeout running task %ld\n", td->index, (size_t)td->args);*/
         /*}*/
 
-        // Lock the house, nobody can give us more work while we're working!
-        if (lock_busy) {
-            pthread_mutex_lock(&td->data_lock);
-            /*printf("[%ld] Someone else had the lock, we're taking it now\n", td->index);*/
-        }
-        
-        // After acquiring the lock, check again to see if there really is work to do 
-        if (!atomic_load(&td->has_task))
-        {
-            /*printf("Woke up but found no work to do, going back to sleep\n");*/
-            continue;
+        pthread_mutex_lock(&td->data_lock);
+
+        if (!atomic_load(&td->has_task)) {
+            break;
         }
 
         // Call the function
-        if (td->function && td->args)
-            td->function(td->args);
-        td->function = td->args = NULL;
+        td->output->output = td->function(td->args);
+        pthread_mutex_unlock(&td->output->join);
 
         // Set sleep timer
         clock_gettime(CLOCK_REALTIME, &timeout);
@@ -124,7 +119,6 @@ void *auxiliary_function(void *args)
     }
 
     atomic_store(&td->has_thread, false);
-    atomic_store(&td->has_task, false);
     pthread_mutex_unlock(&td->data_lock);
     return NULL;
 }
@@ -137,12 +131,17 @@ uint32_t tholder_create(tholder_t *__restrict __newthread,
 
     // Find the next open slot in global array
     thread_data *td = get_inactive_index();
+
+    // Allocate this task's output data
+    task_output *output = (task_output *)malloc(sizeof(task_output));
+    output->output = NULL;
+    output->complete = false;
+    // TODO: change this to a pthread_cond_t or something?
     
     // Lock the house just to be safe. Getting past this line means the thread has gone to sleep but is not dead
     pthread_mutex_lock(&td->data_lock);
     /*printf("Sending task to [%ld]\n", td->index);*/
     
-
     // If there is no thread currently active at the given index, then spawn one
     bool expected = false;
     bool desired = true;
@@ -157,6 +156,8 @@ uint32_t tholder_create(tholder_t *__restrict __newthread,
     // Write the new task function and arguments to the struct 
     td->function = __start_routine;
     td->args = __arg;
+
+    atomic_store(&td->has_task, true);
     
     // Wake up the thread living in this house
     pthread_cond_signal(&td->work_cond_var);
@@ -174,7 +175,7 @@ thread_data *thread_data_init(size_t index)
     td->args = NULL;
     td->function = NULL;
     atomic_init(&td->has_thread, false);
-    atomic_init(&td->has_task, true);
+    atomic_init(&td->has_task, false);
     pthread_cond_init(&td->work_cond_var, NULL);
     pthread_mutex_init(&td->wait_lock, NULL);
     pthread_mutex_init(&td->data_lock, NULL);
@@ -222,4 +223,9 @@ inline void tholder_destroy()
 
     pthread_mutex_unlock(&thread_pool_lock);
     pthread_mutex_destroy(&thread_pool_lock);
+}
+
+int tholder_join(tholder_t th, void **thread_return)
+{
+    
 }

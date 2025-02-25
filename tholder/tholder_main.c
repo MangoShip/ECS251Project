@@ -9,6 +9,7 @@ atomic_int bruh_int = ATOMIC_VAR_INIT(0);
 
 void *bruh(void* _args)
 {
+    printf("Finished\n");
     atomic_fetch_add(&bruh_int, 1);
     return NULL;
 }
@@ -33,11 +34,11 @@ int main(int argc, char *argv[])
     {
         tholder_create(&dummy[i], NULL, bruh, (void *)i);
     }
-
-    usleep(2e5);
+    
+    usleep(100000);
     
     int tasks_completed = atomic_load(&bruh_int);
-    printf("%d tasks finished\n", tasks_completed);
+    /*printf("%d tasks finished\n", tasks_completed);*/
     
     // Free up memory
     tholder_destroy();
