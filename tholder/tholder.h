@@ -5,6 +5,11 @@
 #include <pthread.h>
 #include <semaphore.h>
 
+/* DEFINES */
+#ifndef DEBUG
+#define DEBUG false
+#endif 
+
 #define DEFAULT_MAX_THREADS 8
 
 extern size_t threads_spawned;

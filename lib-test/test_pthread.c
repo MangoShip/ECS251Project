@@ -42,8 +42,8 @@ int main(int argc, char *argv[])
         for (size_t i = 0; i < num_threads; ++i)
             pthread_join(threads[i], NULL);
         
-        printf("%d\n", atomic_load(&tasks));
+        printf("Tasks completed: %d\n", atomic_load(&tasks));
     }
 
-    return threads_spawned;
+    return 0;
 }

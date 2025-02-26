@@ -11,9 +11,20 @@ OBJ_DIR = obj
 
 # Compiler & linker flags
 CC = gcc
-CFLAGS = -Wall -Wpedantic -g -I$(INCLUDE_DIR)
+CFLAGS = -Wall -Wpedantic -I$(INCLUDE_DIR)
+DEBUG_FLAGS=-g -DDEBUG=true -O0
+RELEASE_FLAGS=-O3
+
+ifdef DEBUG
+	CFLAGS += $(DEBUG_FLAGS)
+else
+	CFLAGS += $(RELEASE_FLAGS)
+endif
+
+
 
 all: $(LIB)
+
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
