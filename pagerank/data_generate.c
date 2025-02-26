@@ -13,8 +13,8 @@ void generate_graph(){
     char edge_data[1000000];
     int num_edges = 0;
     int size = rand() % (max_graph - min_graph) + min_graph;
-    char temp[10];
-    itoa(size, temp, 10);
+    char temp[11];
+    sprintf(temp, "%d", size);
     strcpy(filedata, temp);
     strcat(filedata, "\n");
     strcpy(edge_data, "");
@@ -23,10 +23,10 @@ void generate_graph(){
             if(rand() % 4 == 0){
                 strcat(edge_data, "\n");
                 num_edges++;
-                itoa(i, temp, 10);
+                sprintf(temp, "%d", size);
                 strcat(edge_data, temp);
                 strcat(edge_data, " ");
-                itoa(j, temp, 10);
+                sprintf(temp, "%d", size);
                 strcat(edge_data, temp);
             }
         }
@@ -36,7 +36,7 @@ void generate_graph(){
         strcat(edge_data, "\n0 1");
     }
 
-    itoa(num_edges, temp, 10);
+    sprintf(temp, "%d", num_edges);
     strcat(filedata, temp);
     strcat(filedata, edge_data);
 
@@ -58,7 +58,7 @@ int main(int argc, char** argv){
     for(int i = 0; i < num_files; i++){
         strcpy(filename, argv[1]);
         char temp[3];
-        itoa(i, temp, 10);
+        sprintf(temp, "%d", i);
         strcat(filename, "/");
         strcat(filename, temp);
         strcat(filename, ".txt");
