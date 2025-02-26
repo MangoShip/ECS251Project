@@ -80,13 +80,13 @@ void *auxiliary_function(void *args)
     // Additionally, try grabbing the lock. If it is busy, someone is trying to give us work
     while (true)
     {
-        /*if (ret == ETIMEDOUT)*/
-        /*    printf("[%ld] Waking up via timeout\n", td->index); */
-        /*else if (ret == -1) {*/
-        /*    printf("[%ld] Waking up via startup running task %ld\n", td->index, (size_t)td->args);*/
-        /*} else {*/
-        /*    printf("[%ld] Woken up by main thread running task %ld\n", td->index, (size_t)td->args);*/
-        /*}*/
+        if (ret == ETIMEDOUT)
+            printf("[%ld] Waking up via timeout\n", td->index); 
+        else if (ret == -1) {
+            printf("[%ld] Waking up via startup\n", td->index);
+        } else {
+            printf("[%ld] Woken up by main thread\n", td->index);
+        }
 
         pthread_mutex_lock(&td->data_lock);
 
@@ -135,6 +135,7 @@ int tholder_create(tholder_t *__restrict __newthread,
     task_output *output = task_output_init();
     td->output = output;
     *__newthread = (tholder_t)output;
+    printf("Thread [%ld] storing output in [%llu]\n", td->index, *__newthread);
     // Lock the join lock immediately, the auxiliary_function will unlock it.
     pthread_mutex_lock(&output->join);
     
