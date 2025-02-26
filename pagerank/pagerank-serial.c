@@ -70,7 +70,6 @@ void pagerank(){
 void create_matrix(){
     char input_line[256];
     num_nodes = atoi(fgets(input_line, 255, graph));
-    allocate_thread_data();
 
     /*Creates the matrix based on the graph's connections*/
     matrix = (double **)malloc(num_nodes * sizeof(double*));
@@ -118,12 +117,11 @@ void free_all_data(){
 }
 
 int main(int argc, char** argv){
-    if(argc < 5){
+    if(argc < 4){
         printf("Required 3 arguments: folder name containing graph data, number of graphs,threshold");
         return -1;
     }
 
-    create_threads();
 
     total_time = 0;
     char filename[256];
