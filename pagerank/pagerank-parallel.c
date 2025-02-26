@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 
+
 typedef struct
 {
 	int tid;
@@ -198,8 +199,8 @@ int main(int argc, char** argv){
     //Timing for all iterations together
     for(int i = 0; i < num_graphs; i++){
         strcpy(filename, argv[1]);
-        char temp[3];
-        itoa(i, temp, 10);
+        char temp[11];
+        sprintf(temp, "%d", i);
         strcat(filename, "/");
         strcat(filename, temp);
         strcat(filename, ".txt");
