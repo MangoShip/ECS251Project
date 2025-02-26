@@ -6,12 +6,12 @@ OBJ_DIR     = obj
 TARGET_DIR  = target
 
 # List of targets (each target should have a corresponding .c file in SRC_DIR)
-TARGETS = test test_pthread
+TARGETS = data_generate pagerank-parallel pagerank-serial
 
 # Compiler settings
 CC      = gcc
 CFLAGS  = -Wall -Wextra -g -I$(INC_DIR)
-LFLAGS  = -L$(LIB_DIR) -ltholder
+LFLAGS  = -L$(LIB_DIR) -ltholder -lm
 
 # Derived lists:
 # Object files for each target (for main1, the corresponding object file is obj/main1.o, etc.)
@@ -28,7 +28,7 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
 
 # Pattern rule to link the object file into the executable.
 $(TARGET_DIR)/%: $(OBJ_DIR)/%.o | $(TARGET_DIR)
-	$(CC) $(CFLAGS) -o $@ $< $(LFLAGS)
+	$(CC) $(CFLAGS) -o $@ $< $(LFLAGS) $(OPENMP_FLAG)
 
 # Create the object and target directories if they don't exist.
 $(OBJ_DIR):

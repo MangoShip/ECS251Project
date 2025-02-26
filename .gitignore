@@ -11,4 +11,7 @@ obj/
 # Target executables
 target/
 
-
+# Library files (both static and dynamic)
+lib/
+*.a
+*.so
