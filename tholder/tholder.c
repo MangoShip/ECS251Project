@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint-gcc.h>
-
+ 
 #include <sys/time.h>
 #include <time.h>
 #include <string.h>
@@ -98,7 +98,7 @@ void *auxiliary_function(void *args)
 
         // Set sleep timer
         clock_gettime(CLOCK_REALTIME, &timeout);
-        timeout.tv_nsec += 1000000;
+        timeout.tv_nsec += 100000000;
 
         atomic_store(&td->has_task, false);
 
