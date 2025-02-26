@@ -5,6 +5,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <string.h>
+#include "errno.h"
 
 #include "tholder.h"
 #include "pthread.h"
@@ -73,17 +74,18 @@ void *auxiliary_function(void *args)
 {
     thread_data *td = (thread_data *)args;
     struct timespec timeout;
+    int ret = -1;
 
     // Check the has_task flag to see if there is work to be done
     // Additionally, try grabbing the lock. If it is busy, someone is trying to give us work
     while (true)
     {
         /*if (ret == ETIMEDOUT)*/
-        /*    printf("[%ld] Woken up by main thread running task %ld\n", td->index, (size_t)td->args);*/
+        /*    printf("[%ld] Waking up via timeout\n", td->index); */
         /*else if (ret == -1) {*/
         /*    printf("[%ld] Waking up via startup running task %ld\n", td->index, (size_t)td->args);*/
         /*} else {*/
-        /*    printf("[%ld] Waking up via timeout running task %ld\n", td->index, (size_t)td->args);*/
+        /*    printf("[%ld] Woken up by main thread running task %ld\n", td->index, (size_t)td->args);*/
         /*}*/
 
         pthread_mutex_lock(&td->data_lock);
@@ -98,7 +100,7 @@ void *auxiliary_function(void *args)
 
         // Set sleep timer
         clock_gettime(CLOCK_REALTIME, &timeout);
-        timeout.tv_nsec += 100000000;
+        timeout.tv_nsec += 1000000;
 
         atomic_store(&td->has_task, false);
 
@@ -107,7 +109,7 @@ void *auxiliary_function(void *args)
 
         // Sleep until (signaled by another thread OR a specified time has passed)
         pthread_mutex_lock(&td->wait_lock);
-        pthread_cond_timedwait(&td->work_cond_var, &td->wait_lock, &timeout);
+        ret = pthread_cond_timedwait(&td->work_cond_var, &td->wait_lock, &timeout);
         pthread_mutex_unlock(&td->wait_lock);
 
         // If a thread is woken up prematurely, it is assumed that there is work to do
@@ -143,7 +145,7 @@ int tholder_create(tholder_t *__restrict __newthread,
     // If there is no thread currently active at the given index, then spawn one
     bool expected = false;
     bool desired = true;
-    if (!atomic_load(&td->has_thread) && atomic_compare_exchange_strong(&td->has_thread, &expected, &desired))
+    if (!atomic_load(&td->has_thread) && atomic_compare_exchange_strong(&td->has_thread, &expected, true))
     {
         // Create a thread and detatch it. This means it will auto-cleanup on exit
         pthread_t new_thread;
@@ -159,7 +161,7 @@ int tholder_create(tholder_t *__restrict __newthread,
     atomic_store(&td->has_task, true);
     
     // Wake up the thread living in this house
-    pthread_cond_signal(&td->work_cond_var);
+    pthread_cond_broadcast(&td->work_cond_var);
 
     pthread_mutex_unlock(&td->data_lock);
 

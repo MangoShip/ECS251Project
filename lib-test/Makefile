@@ -6,7 +6,7 @@ OBJ_DIR     = obj
 TARGET_DIR  = target
 
 # List of targets (each target should have a corresponding .c file in SRC_DIR)
-TARGETS = test
+TARGETS = test test_pthread
 
 # Compiler settings
 CC      = gcc
