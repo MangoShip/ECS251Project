@@ -7,13 +7,14 @@
 
 #define DEFAULT_MAX_THREADS 8
 
+extern size_t threads_spawned;
+
 // Used as a pointer to the task
 typedef unsigned long long tholder_t;
 
 // Holds the status and return values of a task
 typedef struct task_output
 {
-    bool complete;
     void *output;
     pthread_mutex_t join;
 } task_output;
@@ -54,3 +55,5 @@ void tholder_destroy();
 void *auxiliary_function(void *args);
 
 thread_data *get_inactive_index();
+
+task_output *task_output_init();

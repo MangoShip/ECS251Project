@@ -1,18 +1,31 @@
-CC := gcc
-CFLAGS := -g -Wall -Wpedantic
-OBJECTS := tholder.o
+# Source and object files
+SRC_DIR = src
+OBJ_DIR = obj
+INC_DIR = include
+SOURCES = $(wildcard $(SRC_DIR)/*.c)
+OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SOURCES))
 
-all: tholder_main pthread_main
+# Executable name and location
+EXEC = main
+EXEC_DIR = target
 
-tholder_main: $(OBJECTS) tholder_main.c
-	$(CC) $(CFLAGS) $^ -o $@
+# Compiler and flags
+CC = gcc
+CFLAGS = -Wall -Wextra -g -I$(INC_DIR)
 
-pthread_main: pthread_main.c
-	$(CC) $(CFLAGS) $^ -o $@
+# Targets
+all: $(EXEC)
 
+$(EXEC): $(OBJECTS)
+	$(CC) $(CFLAGS) -o $(EXEC_DIR)/$(EXEC) $(OBJECTS)
 
-$(OBJECTS): %.o: %.c
-	$(CC) $(CFLAGS) -c $^ -o $@
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OBJ_DIR):
+	mkdir -p $(OBJ_DIR)
 
 clean:
-	rm -f *.o tholder_main pthread_main
+	rm -rf $(OBJ_DIR) $(EXEC_DIR)/$(EXEC)
+
+.PHONY: all clean

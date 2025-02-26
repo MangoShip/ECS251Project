@@ -1,16 +1,17 @@
-#include <cstdlib>
-#include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint-gcc.h>
 
 #include <sys/time.h>
 #include <time.h>
+#include <string.h>
 
 #include "tholder.h"
 #include "pthread.h"
 
 /* library global variables */
+
+size_t threads_spawned = 0;
 
 pthread_mutex_t thread_pool_lock = PTHREAD_MUTEX_INITIALIZER;
 thread_data **thread_pool = NULL;
@@ -20,8 +21,6 @@ size_t thread_pool_size = 0;
 thread_data *get_inactive_index()
 {
     size_t index = 0;
-    bool expected = false;
-    bool desired = true;
 
     // If the region is not initialized, init with DEFAULT_MAX_THREADS
     // This first if statement is meant to protect threads from unnecessary lock contention
@@ -40,7 +39,7 @@ thread_data *get_inactive_index()
             thread_pool[index] = thread_data_init(index);
             break;
         }
-        expected = false;
+
         // if we find an open slot, use it
         if (!atomic_load(&thread_pool[index]->has_task))
         {
@@ -72,8 +71,6 @@ thread_data *get_inactive_index()
 
 void *auxiliary_function(void *args)
 {
-    int lock_busy = 0;
-    int ret = 0;
     thread_data *td = (thread_data *)args;
     struct timespec timeout;
 
@@ -110,7 +107,7 @@ void *auxiliary_function(void *args)
 
         // Sleep until (signaled by another thread OR a specified time has passed)
         pthread_mutex_lock(&td->wait_lock);
-        ret = pthread_cond_timedwait(&td->work_cond_var, &td->wait_lock, &timeout);
+        pthread_cond_timedwait(&td->work_cond_var, &td->wait_lock, &timeout);
         pthread_mutex_unlock(&td->wait_lock);
 
         // If a thread is woken up prematurely, it is assumed that there is work to do
@@ -123,7 +120,7 @@ void *auxiliary_function(void *args)
     return NULL;
 }
 
-uint32_t tholder_create(tholder_t *__restrict __newthread,
+int tholder_create(tholder_t *__restrict __newthread,
                         const pthread_attr_t *__restrict __attr,
                         void *(*__start_routine)(void *),
                         void *__restrict __arg)
@@ -133,10 +130,11 @@ uint32_t tholder_create(tholder_t *__restrict __newthread,
     thread_data *td = get_inactive_index();
 
     // Allocate this task's output data
-    task_output *output = (task_output *)malloc(sizeof(task_output));
-    output->output = NULL;
-    output->complete = false;
-    // TODO: change this to a pthread_cond_t or something?
+    task_output *output = task_output_init();
+    td->output = output;
+    *__newthread = (tholder_t)output;
+    // Lock the join lock immediately, the auxiliary_function will unlock it.
+    pthread_mutex_lock(&output->join);
     
     // Lock the house just to be safe. Getting past this line means the thread has gone to sleep but is not dead
     pthread_mutex_lock(&td->data_lock);
@@ -149,8 +147,9 @@ uint32_t tholder_create(tholder_t *__restrict __newthread,
     {
         // Create a thread and detatch it. This means it will auto-cleanup on exit
         pthread_t new_thread;
-        pthread_create(&new_thread, NULL, auxiliary_function, (void *)td);
+        pthread_create(&new_thread, __attr, auxiliary_function, (void *)td);
         pthread_detach(new_thread);
+        threads_spawned++;
     }
 
     // Write the new task function and arguments to the struct 
@@ -209,6 +208,7 @@ inline void tholder_destroy()
             // Skip if the slot is NULL, it just means it was allocated and never used
             if (thread_pool[i] == NULL)
                 continue;
+
             pthread_cond_destroy(&thread_pool[i]->work_cond_var);
             pthread_mutex_destroy(&thread_pool[i]->wait_lock);
             pthread_mutex_destroy(&thread_pool[i]->data_lock);
@@ -225,7 +225,26 @@ inline void tholder_destroy()
     pthread_mutex_destroy(&thread_pool_lock);
 }
 
+task_output *task_output_init()
+{
+    task_output *output = (task_output *)calloc(1, sizeof(task_output));
+    output->output = NULL;
+    pthread_mutex_init(&output->join, NULL);
+    return output;
+}
+
 int tholder_join(tholder_t th, void **thread_return)
 {
-    
+    task_output *output = (task_output *)th; 
+    pthread_mutex_lock(&output->join);
+    pthread_mutex_unlock(&output->join);
+
+    // If thread_return is not NULL, we must copy the return value over
+    if (thread_return != NULL)
+        memcpy(thread_return, &output->output, sizeof(void *));
+
+    pthread_mutex_destroy(&output->join);
+    free(output);
+
+    return 0;
 }
