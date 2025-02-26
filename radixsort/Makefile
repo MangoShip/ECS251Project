@@ -4,7 +4,7 @@
 #       executable, you need to modify this Makefile.
 
 # Name of binary file
-PRODUCT := thread thread_gtod thread_clock_gettime
+PRODUCT := radixsort_seq radixsort_parallel
 
 # Flags for debug mode
 DEBUG_FLAGS := -g -DDEBUG -O0
