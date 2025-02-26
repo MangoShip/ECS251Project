@@ -7,12 +7,12 @@ TARGET_DIR  = target
 OPENMP_FLAG ?= 
 
 # List of targets (each target should have a corresponding .c file in SRC_DIR)
-TARGETS = radixsort_parallel radixsort_seq radixsort_tholder
+TARGETS = openmp_BFS parallel_BFS serial_BFS
 
 # Compiler settings
 CC      = gcc
 CFLAGS  = -Wall -Wextra -g -I$(INC_DIR)
-LFLAGS  = -L$(LIB_DIR) -ltholder 
+LFLAGS  = -L$(LIB_DIR) -ltholder -fopenmp
 
 # Derived lists:
 # Object files for each target (for main1, the corresponding object file is obj/main1.o, etc.)

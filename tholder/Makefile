@@ -1,23 +1,19 @@
-# Source and object files
-SRC_DIR = src
-OBJ_DIR = obj
-INC_DIR = include
+# Files
+LIB = libtholder.a
 SOURCES = $(wildcard $(SRC_DIR)/*.c)
+SRC_DIR = .
 OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SOURCES))
 
-# Executable name and location
-EXEC = main
-EXEC_DIR = target
+# Directories
+LIB_DIR = lib
+INCLUDE_DIR = include
+OBJ_DIR = obj
 
-# Compiler and flags
+# Compiler & linker flags
 CC = gcc
-CFLAGS = -Wall -Wextra -g -I$(INC_DIR)
+CFLAGS = -Wall -Wpedantic -g -I$(INCLUDE_DIR)
 
-# Targets
-all: $(EXEC)
-
-$(EXEC): $(OBJECTS)
-	$(CC) $(CFLAGS) -o $(EXEC_DIR)/$(EXEC) $(OBJECTS)
+all: $(LIB)
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -25,7 +21,11 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
 $(OBJ_DIR):
 	mkdir -p $(OBJ_DIR)
 
-clean:
-	rm -rf $(OBJ_DIR) $(EXEC_DIR)/$(EXEC)
+$(LIB): $(LIB_DIR) $(OBJECTS)
+	ar rcs $(LIB_DIR)/$(LIB) $(wildcard $(OBJECTS))
 
-.PHONY: all clean
+$(LIB_DIR):
+	mkdir -p $(LIB_DIR)
+
+clean:
+	rm -rf $(OBJ_DIR) $(LIB_DIR)
