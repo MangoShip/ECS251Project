@@ -1,0 +1,14 @@
+# Local VSCode directory settings folder
+.vscode
+
+# Valgrind core dump files
+vgcore*
+
+# Object files
+obj/
+*.o
+
+# Target executables
+target/
+
+
