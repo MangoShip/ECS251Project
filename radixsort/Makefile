@@ -6,7 +6,7 @@ OBJ_DIR     = obj
 TARGET_DIR  = target
 
 # List of targets (each target should have a corresponding .c file in SRC_DIR)
-TARGETS = radixsort_parallel radixsort_seq radixsort_tholder
+TARGETS = radixsort_parallel radixsort_seq radixsort_tholder radixsort_openmp
 
 # Compiler settings 
 #
