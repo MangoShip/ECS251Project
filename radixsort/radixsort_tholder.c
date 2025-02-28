@@ -7,7 +7,7 @@
 #include <time.h>
 
 /*
- * radixsort_parallel.c: Radix Sort Implementation (Parallel Version)
+ * radixsort_tholder.c: Radix Sort Implementation (tholder Version)
 */
 
 //-----------------------------------------------------
@@ -126,7 +126,7 @@ void *rewrite_A(void *arg) {
 // Main Function
 int main(int argc, char *argv[]) {
   if (argc != 3) {
-    printf("Usage: ./thread N NUM_THREADS\n");
+    printf("Usage: ./radixsort_tholder N NUM_THREADS\n");
     exit(1);
   }
 
