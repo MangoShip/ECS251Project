@@ -14,9 +14,9 @@ CC = gcc
 CFLAGS = -Wall -Wpedantic -I$(INCLUDE_DIR)
 
 ifdef DEBUG
-	CFLAGS += -g -DDEBUG=true -O0
+	CFLAGS += -O0 -g -DDEBUG
 else
-	CFLAGS += -O3
+	CFLAGS += -O3 -DNDEBUG
 endif
 
 all: $(LIB)

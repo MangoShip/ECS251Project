@@ -6,7 +6,7 @@ OBJ_DIR     = obj
 TARGET_DIR  = target
 
 # List of targets (each target should have a corresponding .c file in SRC_DIR)
-TARGETS = openmp_BFS parallel_BFS serial_BFS tholder_BFS
+TARGETS = openmp_BFS parallel_BFS serial_BFS 
 
 # Compiler settings 
 #
@@ -16,9 +16,9 @@ CFLAGS  = -Wall -Wextra -Wpedantic -I$(INC_DIR) -fopenmp
 LDFLAGS  = -L$(LIB_DIR) -ltholder -fopenmp
 
 ifdef DEBUG
-	CFLAGS += -O0 -g
+	CFLAGS += -O0 -g -DDEBUG
 else
-	CFLAGS += -O3
+	CFLAGS += -O3 -DNDEBUG
 endif
 
 # Object files for each target (for main1, the corresponding object file is obj/main1.o, etc.)

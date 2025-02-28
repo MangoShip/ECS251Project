@@ -14,9 +14,9 @@ CFLAGS  = -Wall -Wextra -Wpedantic -I$(INC_DIR)
 LDFLAGS  = -L$(LIB_DIR) -ltholder 
 
 ifdef DEBUG
-	CFLAGS += -O0 -g
+	CFLAGS += -O0 -g -DDEBUG
 else
-	CFLAGS += -O3
+	CFLAGS += -O3 -DNDEBUG
 endif
 
 # Object files for each target (for main1, the corresponding object file is obj/main1.o, etc.)
