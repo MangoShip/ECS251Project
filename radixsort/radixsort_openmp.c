@@ -64,6 +64,7 @@ int main(int argc, char *argv[]) {
 
   struct timespec start_time, end_time;
 
+#ifdef TIMER
   struct timespec timer1_start, timer2_start, timer3_start, timer4_start;
   struct timespec timer1_end, timer2_end, timer3_end, timer4_end;
 
@@ -71,6 +72,7 @@ int main(int argc, char *argv[]) {
   double time2 = 0;
   double time3 = 0;
   double time4 = 0;
+#endif
 
   // List that will be used for sorting
   int *A = malloc(N * sizeof(int));
@@ -103,7 +105,10 @@ int main(int argc, char *argv[]) {
       offsets[i] = 0;
     }
 
+#ifdef TIMER
     clock_gettime(CLOCK_MONOTONIC, &timer1_start);
+#endif
+
 #pragma omp parallel for schedule(static,local_N) reduction(+:total_0bits)
     for (int i = 0; i < N; i++) {
       int tid = omp_get_thread_num();
@@ -116,10 +121,13 @@ int main(int argc, char *argv[]) {
 
       if (bit == 0) total_0bits++;
     }
+
+#ifdef TIMER
     clock_gettime(CLOCK_MONOTONIC, &timer1_end);
     time1 += difftimespec_ns(timer1_end, timer1_start); 
 
     clock_gettime(CLOCK_MONOTONIC, &timer2_start);
+#endif
 
 #pragma omp parallel for schedule(static, 1)
     for (int chunk_id = 0; chunk_id < num_threads; chunk_id++) {
@@ -128,13 +136,16 @@ int main(int argc, char *argv[]) {
         offsets[(chunk_id * 2) + 1] += hist[(i * 2) + 1];
       }
     }
+
+#ifdef TIMER
     clock_gettime(CLOCK_MONOTONIC, &timer2_end);
     time2 += difftimespec_ns(timer2_end, timer2_start); 
 
+    clock_gettime(CLOCK_MONOTONIC, &timer3_start);
+#endif
 
     int offset_0bit = 0;
     int offset_1bit = 0;
-    clock_gettime(CLOCK_MONOTONIC, &timer3_start);
     // Get a new index for each number
 #pragma omp parallel for schedule(static,local_N) firstprivate(offset_0bit, offset_1bit)
     for (int i = 0; i < N; i++) {
@@ -145,10 +156,14 @@ int main(int argc, char *argv[]) {
         new_indexes[i] = total_0bits + offsets[(omp_get_thread_num() * 2) + 1] + offset_1bit++;
       }
     }
+
+#ifdef TIMER
     clock_gettime(CLOCK_MONOTONIC, &timer3_end);
     time3 += difftimespec_ns(timer3_end, timer3_start); 
 
     clock_gettime(CLOCK_MONOTONIC, &timer4_start);
+#endif
+
     // Rewrite a list with new index
 #pragma omp parallel for
     for (int i = 0; i < N; i++) {
@@ -160,19 +175,11 @@ int main(int argc, char *argv[]) {
     new_A = save_A;
     save_A = A;
 
+#ifdef TIMER
     clock_gettime(CLOCK_MONOTONIC, &timer4_end);
     time4 += difftimespec_ns(timer4_end, timer4_start); 
+#endif
 
-    /*printf("k: %d\n", k);
-    printf("hist: ");
-    print_list(hist, 2 * num_threads);
-    printf("offsets: ");
-    print_list(offsets, 2 * num_threads);
-    printf("New Indexes: ");
-    print_list(new_indexes, N);
-    printf("New A: ");
-    print_list(A, N);
-    printf("\n");*/
   }
   clock_gettime(CLOCK_MONOTONIC, &end_time);
 
@@ -187,10 +194,12 @@ int main(int argc, char *argv[]) {
   printf("PASSED\n");
   printf("Execution Time: %f s\n", difftimespec_ns(end_time, start_time) / 1e9);
 
+#ifdef TIMER
   printf("Time1: %f s\n", time1 / 1e9);
   printf("Time2: %f s\n", time2 / 1e9);
   printf("Time3: %f s\n", time3 / 1e9);
   printf("Time4: %f s\n", time4 / 1e9);
+#endif
 
   free(A);
   free(new_indexes);

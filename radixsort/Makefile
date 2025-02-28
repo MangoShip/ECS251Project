@@ -21,6 +21,10 @@ else
 	CFLAGS += -O3 -DNDEBUG
 endif
 
+ifdef TIMER
+	CFLAGS += -DTIMER
+endif
+
 # Object files for each target (for main1, the corresponding object file is obj/main1.o, etc.)
 OBJECTS = $(addprefix $(OBJ_DIR)/, $(addsuffix .o, $(TARGETS)))
 # Executable paths in TARGET_DIR.
