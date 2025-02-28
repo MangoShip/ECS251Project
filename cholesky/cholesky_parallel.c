@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
+
 #include <math.h>
 #include <pthread.h>
 #include <time.h>
@@ -33,14 +35,20 @@ void *worker(void *arg)
         // ---------------------------
         if (tid == 0)
         {
+            #ifdef DEBUG
             printf("[Serial] Thread %ld computing diagonal for column j=%d...\n", tid, j);
+            #endif
+
             double sum = 0.0;
             for (int k = 0; k < j; k++) {
                 sum += L[j][k] * L[j][k];
             }
             L[j][j] = sqrt(A[j][j] - sum);
+
+            #ifdef DEBUG
             printf("[Serial] Thread %ld finished diagonal for column j=%d: L[%d][%d] = %f\n",
                    tid, j, j, j, L[j][j]);
+            #endif
         }
 
         // Barrier #1: Ensure the diagonal is computed before off-diagonal updates.
@@ -62,8 +70,10 @@ void *worker(void *arg)
         int end   = start + count;
 
         if (count > 0) {
+            #ifdef DEBUG
             printf("[Parallel] Thread %ld updating rows [%d..%d) for column j=%d\n",
                    tid, start, end, j);
+            #endif
         }
 
         // Off-diagonal updates
@@ -79,7 +89,9 @@ void *worker(void *arg)
         pthread_barrier_wait(&barrier);
 
         if (tid == 0) {
+            #ifdef DEBUG
             printf("[Main/Serial] Column j=%d completed. Moving to next column.\n", j);
+            #endif
         }
     }
 
@@ -114,48 +126,6 @@ void cholesky_pthreads(double **A_in, double **L_in, int N_in, int num_threads)
 
     pthread_barrier_destroy(&barrier);
     free(threads);
-static void cholesky_parallel() {
-    for (int j = 0; j < N; j++) {
-        if (j % 10 == 0) {
-            #ifdef DEBUG
-            fprintf(stderr, "[DEBUG] Main thread: starting column j=%d\n", j);
-            #endif
-        }
-
-        // 1) Compute diagonal L[j][j]
-        double sum = 0.0;
-        for (int k = 0; k < j; k++) {
-            sum += L[j][k] * L[j][k];
-        }
-        L[j][j] = sqrt(A[j][j] - sum);
-
-        // 2) Set current_column and let workers do row-updates
-        current_column = j;
-
-        #ifdef DEBUG
-        fprintf(stderr, "[DEBUG] Main thread: barrier #1 for column j=%d\n", j);
-        #endif
-        pthread_barrier_wait(&barrier);
-
-        #ifdef DEBUG
-        fprintf(stderr, "[DEBUG] Main thread: barrier #2 for column j=%d\n", j);
-        #endif
-        pthread_barrier_wait(&barrier);
-    }
-
-    // All columns done, signal 'done' and do a final barrier to wake workers
-    done = true;
-    #ifdef DEBUG
-    fprintf(stderr, "[DEBUG] Main thread: done=true, final barrier to let workers exit.\n");
-    #endif
-    pthread_barrier_wait(&barrier);
-
-    // Wait once more so all threads pass their final barrier
-    pthread_barrier_wait(&barrier);
-
-    #ifdef DEBUG
-    fprintf(stderr, "[DEBUG] Main thread: final barrier done, returning from cholesky_parallel.\n");
-    #endif
 }
 
 // ------------------------------------------------------------
