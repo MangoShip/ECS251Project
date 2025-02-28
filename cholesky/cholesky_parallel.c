@@ -182,7 +182,9 @@ static void *worker(void *arg) {
 static void cholesky_parallel() {
     for (int j = 0; j < N; j++) {
         if (j % 10 == 0) {
+            #ifdef DEBUG
             fprintf(stderr, "[DEBUG] Main thread: starting column j=%d\n", j);
+            #endif
         }
 
         // 1) Compute diagonal L[j][j]

@@ -4,23 +4,29 @@ INC_DIR     = ../tholder
 LIB_DIR     = ../tholder/lib
 OBJ_DIR     = obj
 TARGET_DIR  = target
-OPENMP_FLAG ?= 
 
 # List of targets (each target should have a corresponding .c file in SRC_DIR)
 TARGETS = cholesky_openmp cholesky_parallel cholesky_serial
 
-# Compiler settings
+# Compiler settings 
+#
+# NOTE: Linking against -fopenmp may result in slightly larger binary sizes, but this is fine
 CC      = gcc
-CFLAGS  = -Wall -Wextra -g -I$(INC_DIR)
-LFLAGS  = -L$(LIB_DIR) -ltholder -fopenmp -lm
+CFLAGS  = -Wall -Wextra -Wpedantic -I$(INC_DIR) -fopenmp
+LDFLAGS  = -L$(LIB_DIR) -ltholder -fopenmp -lm
 
-# Derived lists:
+ifdef DEBUG
+	CFLAGS += -O0 -g
+else
+	CFLAGS += -O3
+endif
+
 # Object files for each target (for main1, the corresponding object file is obj/main1.o, etc.)
 OBJECTS = $(addprefix $(OBJ_DIR)/, $(addsuffix .o, $(TARGETS)))
 # Executable paths in TARGET_DIR.
 EXECUTABLES = $(addprefix $(TARGET_DIR)/, $(TARGETS))
 
-# Default target: build all executables.
+# Default target: build all executables. To build a specific target, run `make $(TARGET_DIR)/my_executable`
 all: $(EXECUTABLES)
 
 # Pattern rule to compile each source file into its corresponding object.
@@ -29,7 +35,7 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
 
 # Pattern rule to link the object file into the executable.
 $(TARGET_DIR)/%: $(OBJ_DIR)/%.o | $(TARGET_DIR)
-	$(CC) $(CFLAGS) -o $@ $< $(LFLAGS) $(OPENMP_FLAG)
+	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
 
 # Create the object and target directories if they don't exist.
 $(OBJ_DIR):

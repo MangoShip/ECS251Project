@@ -6,20 +6,25 @@ OBJ_DIR     = obj
 TARGET_DIR  = target
 
 # List of targets (each target should have a corresponding .c file in SRC_DIR)
-TARGETS = test test_pthread
+TARGETS = test-tholder test-pthread
 
-# Compiler settings
+# Compiler settings 
 CC      = gcc
-CFLAGS  = -Wall -Wextra -g -I$(INC_DIR)
-LFLAGS  = -L$(LIB_DIR) -ltholder
+CFLAGS  = -Wall -Wextra -Wpedantic -I$(INC_DIR)
+LDFLAGS  = -L$(LIB_DIR) -ltholder 
 
-# Derived lists:
+ifdef DEBUG
+	CFLAGS += -O0 -g
+else
+	CFLAGS += -O3
+endif
+
 # Object files for each target (for main1, the corresponding object file is obj/main1.o, etc.)
 OBJECTS = $(addprefix $(OBJ_DIR)/, $(addsuffix .o, $(TARGETS)))
 # Executable paths in TARGET_DIR.
 EXECUTABLES = $(addprefix $(TARGET_DIR)/, $(TARGETS))
 
-# Default target: build all executables.
+# Default target: build all executables. To build a specific target, run `make $(TARGET_DIR)/my_executable`
 all: $(EXECUTABLES)
 
 # Pattern rule to compile each source file into its corresponding object.
@@ -28,7 +33,7 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
 
 # Pattern rule to link the object file into the executable.
 $(TARGET_DIR)/%: $(OBJ_DIR)/%.o | $(TARGET_DIR)
-	$(CC) $(CFLAGS) -o $@ $< $(LFLAGS)
+	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
 
 # Create the object and target directories if they don't exist.
 $(OBJ_DIR):

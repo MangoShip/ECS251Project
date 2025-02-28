@@ -11,7 +11,13 @@ OBJ_DIR = obj
 
 # Compiler & linker flags
 CC = gcc
-CFLAGS = -Wall -Wpedantic -g -I$(INCLUDE_DIR)
+CFLAGS = -Wall -Wpedantic -I$(INCLUDE_DIR)
+
+ifdef DEBUG
+	CFLAGS += -g -DDEBUG=true -O0
+else
+	CFLAGS += -O3
+endif
 
 all: $(LIB)
 
