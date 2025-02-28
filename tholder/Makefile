@@ -21,6 +21,7 @@ endif
 
 all: $(LIB)
 
+
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 

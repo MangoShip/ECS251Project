@@ -11,7 +11,7 @@ fi
 
 for ((i = 0; i < $3; i++)); do
     ret=$(target/test $1 $2)
-    num_tasks=$(printf "%s\n" "$ret" | grep -c "Tasks completed: $1")
+    num_tasks=$(printf "%s\n" "$ret" | egrep -c "Tasks completed: $1\$")
     if [[ $num_tasks -ne $2 ]] then
         printf "\rTRIAL $i FAILED  \n"
         echo Expected $2, got $num_tasks
