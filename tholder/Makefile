@@ -12,16 +12,12 @@ OBJ_DIR = obj
 # Compiler & linker flags
 CC = gcc
 CFLAGS = -Wall -Wpedantic -I$(INCLUDE_DIR)
-DEBUG_FLAGS=-g -DDEBUG=true -O0
-RELEASE_FLAGS=-O3
 
 ifdef DEBUG
-	CFLAGS += $(DEBUG_FLAGS)
+	CFLAGS += -O0 -g -DDEBUG
 else
-	CFLAGS += $(RELEASE_FLAGS)
+	CFLAGS += -O3 -DNDEBUG
 endif
-
-
 
 all: $(LIB)
 

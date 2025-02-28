@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
+
 #include <math.h>
 #include <pthread.h>
 #include <time.h>
@@ -33,14 +35,20 @@ void *worker(void *arg)
         // ---------------------------
         if (tid == 0)
         {
+            #ifdef DEBUG
             printf("[Serial] Thread %ld computing diagonal for column j=%d...\n", tid, j);
+            #endif
+
             double sum = 0.0;
             for (int k = 0; k < j; k++) {
                 sum += L[j][k] * L[j][k];
             }
             L[j][j] = sqrt(A[j][j] - sum);
+
+            #ifdef DEBUG
             printf("[Serial] Thread %ld finished diagonal for column j=%d: L[%d][%d] = %f\n",
                    tid, j, j, j, L[j][j]);
+            #endif
         }
 
         // Barrier #1: Ensure the diagonal is computed before off-diagonal updates.
@@ -62,8 +70,10 @@ void *worker(void *arg)
         int end   = start + count;
 
         if (count > 0) {
+            #ifdef DEBUG
             printf("[Parallel] Thread %ld updating rows [%d..%d) for column j=%d\n",
                    tid, start, end, j);
+            #endif
         }
 
         // Off-diagonal updates
@@ -79,7 +89,9 @@ void *worker(void *arg)
         pthread_barrier_wait(&barrier);
 
         if (tid == 0) {
+            #ifdef DEBUG
             printf("[Main/Serial] Column j=%d completed. Moving to next column.\n", j);
+            #endif
         }
     }
 
