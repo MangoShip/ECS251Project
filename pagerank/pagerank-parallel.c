@@ -93,6 +93,7 @@ void *pagerank_parallel(void *arg){
             new_eigen[i] += matrix[i][j] * eigen[j];
         }
     }
+    return 0;
 }
 
 void pagerank(){
@@ -145,13 +146,13 @@ void create_matrix(){
         eigen[i] = 1;
     }
     //Take all edges, add a 1 to the matrix at coordinates [from_edge, to_edge]
-    int edges = atoi(fgets(input_line, 255, graph));
-    for(int k = 0; k < edges; k++){
-        char *current_edge = malloc(255);
-        current_edge = fgets(input_line, 255, graph);
+    char* current_edge = malloc(255);
+    current_edge = fgets(input_line, 255, graph);
+    while(strcmp(current_edge, "END") != 0){
         int from_edge = atoi(strtok(current_edge, " "));
         int to_edge = atoi(strtok(NULL, " "));
         matrix[from_edge][to_edge] = 1;
+        current_edge = fgets(input_line, 255, graph);
     }
     //Look at each column, find the number of 1 nodes, and divide all of the 1 nodes by the number of 1 nodes
     int node_count = 0;
