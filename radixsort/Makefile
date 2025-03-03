@@ -6,7 +6,7 @@ OBJ_DIR     = obj
 TARGET_DIR  = target
 
 # List of targets (each target should have a corresponding .c file in SRC_DIR)
-TARGETS = radixsort_parallel radixsort_seq radixsort_tholder
+TARGETS = radixsort_parallel radixsort_seq radixsort_tholder radixsort_openmp
 
 # Compiler settings 
 #
@@ -19,6 +19,10 @@ ifdef DEBUG
 	CFLAGS += -O0 -g -DDEBUG
 else
 	CFLAGS += -O3 -DNDEBUG
+endif
+
+ifdef TIMER
+	CFLAGS += -DTIMER
 endif
 
 # Object files for each target (for main1, the corresponding object file is obj/main1.o, etc.)

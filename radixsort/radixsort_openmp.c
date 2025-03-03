@@ -2,9 +2,11 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <time.h>
+#include <math.h>
+#include <omp.h>
 
 /*
- * radixsort_seq.c: Radix Sort Implementation (Sequential Version)
+ * radixsort_openmp.c: Radix Sort Implementation (OpenMP Version)
 */
 
 //-----------------------------------------------------
@@ -44,13 +46,18 @@ int get_kth_bit(int num, int k) {
 //-----------------------------------------------------
 // Main Function
 int main(int argc, char *argv[]) {
-  if (argc != 2) {
-    printf("Usage: ./radixsort_seq N\n");
+  if (argc != 3) {
+    printf("Usage: ./radixsort_openmp N NUM_THREADS\n");
     exit(1);
   }
 
   int N;
   sscanf(argv[1], "%d", &N);
+
+  int num_threads;
+  sscanf(argv[2], "%d", &num_threads);
+
+  omp_set_num_threads(num_threads);
 
   int seed = 0;
   srandom(seed); // Pseudo-random generator
@@ -58,12 +65,13 @@ int main(int argc, char *argv[]) {
   struct timespec start_time, end_time;
 
 #ifdef TIMER
-  struct timespec timer1_start, timer2_start, timer3_start;
-  struct timespec timer1_end, timer2_end, timer3_end;
+  struct timespec timer1_start, timer2_start, timer3_start, timer4_start;
+  struct timespec timer1_end, timer2_end, timer3_end, timer4_end;
 
   double time1 = 0;
   double time2 = 0;
   double time3 = 0;
+  double time4 = 0;
 #endif
 
   // List that will be used for sorting
@@ -81,29 +89,37 @@ int main(int argc, char *argv[]) {
   
   // Main loop for radix sort
   int *save_A = A;
-  int *offsets = malloc(N * sizeof(int));
   int *new_indexes = malloc(N * sizeof(int));
   int *new_A = malloc(N * sizeof(int));
-  int hist[2];
+  int hist[2 * num_threads];
+  int offsets[2 * num_threads];
+  int local_N = floor((N + (num_threads - 1)) / num_threads);
 
   clock_gettime(CLOCK_MONOTONIC, &start_time);
   for (int k = 0; k < max_k; k++) {
-    hist[0] = 0;
-    hist[1] = 0;
+    int total_0bits = 0;
+
+    // Initialize hist and offsets to 0
+    for (int i = 0; i < (2 * num_threads); i++){
+      hist[i] = 0;
+      offsets[i] = 0;
+    }
 
 #ifdef TIMER
     clock_gettime(CLOCK_MONOTONIC, &timer1_start);
 #endif
 
+#pragma omp parallel for schedule(static,local_N) reduction(+:total_0bits)
     for (int i = 0; i < N; i++) {
+      int tid = omp_get_thread_num();
+
       // Get k-th bit for each element
       int bit = get_kth_bit(A[i], k);
 
-      // Collect a relative offsets
-      offsets[i] = hist[bit];
-
       // Build a histogram of 0 or 1 bit
-      hist[bit]++;
+      hist[(tid * 2) + bit]++;
+
+      if (bit == 0) total_0bits++;
     }
 
 #ifdef TIMER
@@ -113,13 +129,11 @@ int main(int argc, char *argv[]) {
     clock_gettime(CLOCK_MONOTONIC, &timer2_start);
 #endif
 
-    // Get a new index for each number
-    for (int i = 0; i < N; i++) {
-      if ((A[i] & ( 1 << k )) == 0) {
-        new_indexes[i] = offsets[i];
-      }
-      else { // k-bit == 1
-        new_indexes[i] = hist[0] + offsets[i];
+#pragma omp parallel for schedule(static, 1)
+    for (int chunk_id = 0; chunk_id < num_threads; chunk_id++) {
+      for (int i = 0; i < omp_get_thread_num(); i++) {
+        offsets[(chunk_id * 2)] += hist[(i * 2)];
+        offsets[(chunk_id * 2) + 1] += hist[(i * 2) + 1];
       }
     }
 
@@ -130,18 +144,40 @@ int main(int argc, char *argv[]) {
     clock_gettime(CLOCK_MONOTONIC, &timer3_start);
 #endif
 
+    int offset_0bit = 0;
+    int offset_1bit = 0;
+    // Get a new index for each number
+#pragma omp parallel for schedule(static,local_N) firstprivate(offset_0bit, offset_1bit)
+    for (int i = 0; i < N; i++) {
+      if ((A[i] & ( 1 << k )) == 0) {
+        new_indexes[i] = offsets[(omp_get_thread_num() * 2)] + offset_0bit++;
+      }
+      else { // k-bit == 1
+        new_indexes[i] = total_0bits + offsets[(omp_get_thread_num() * 2) + 1] + offset_1bit++;
+      }
+    }
+
+#ifdef TIMER
+    clock_gettime(CLOCK_MONOTONIC, &timer3_end);
+    time3 += difftimespec_ns(timer3_end, timer3_start); 
+
+    clock_gettime(CLOCK_MONOTONIC, &timer4_start);
+#endif
+
     // Rewrite a list with new index
+#pragma omp parallel for
     for (int i = 0; i < N; i++) {
       new_A[new_indexes[i]] = A[i];
     }
+
     // Re-route pointer A
     A = new_A;
     new_A = save_A;
     save_A = A;
 
 #ifdef TIMER
-    clock_gettime(CLOCK_MONOTONIC, &timer3_end);
-    time3 += difftimespec_ns(timer3_end, timer3_start); 
+    clock_gettime(CLOCK_MONOTONIC, &timer4_end);
+    time4 += difftimespec_ns(timer4_end, timer4_start); 
 #endif
 
   }
@@ -162,10 +198,10 @@ int main(int argc, char *argv[]) {
   printf("Time1: %f s\n", time1 / 1e9);
   printf("Time2: %f s\n", time2 / 1e9);
   printf("Time3: %f s\n", time3 / 1e9);
+  printf("Time4: %f s\n", time4 / 1e9);
 #endif
 
   free(A);
-  free(offsets);
   free(new_indexes);
   free(new_A);
   return 0;

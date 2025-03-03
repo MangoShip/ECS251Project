@@ -7,7 +7,7 @@
 #include <time.h>
 
 /*
- * radixsort_parallel.c: Radix Sort Implementation (Parallel Version)
+ * radixsort_tholder.c: Radix Sort Implementation (tholder Version)
 */
 
 //-----------------------------------------------------
@@ -126,7 +126,7 @@ void *rewrite_A(void *arg) {
 // Main Function
 int main(int argc, char *argv[]) {
   if (argc != 3) {
-    printf("Usage: ./thread N NUM_THREADS\n");
+    printf("Usage: ./radixsort_tholder N NUM_THREADS\n");
     exit(1);
   }
 
@@ -150,6 +150,7 @@ int main(int argc, char *argv[]) {
 
   struct timespec start_time, end_time;
 
+#ifdef TIMER
   struct timespec timer1_start, timer2_start, timer3_start, timer4_start;
   struct timespec timer1_end, timer2_end, timer3_end, timer4_end;
 
@@ -157,6 +158,7 @@ int main(int argc, char *argv[]) {
   double time2 = 0;
   double time3 = 0;
   double time4 = 0;
+#endif
 
   // List that will be used for sorting
   int *A = malloc(N * sizeof(int));
@@ -180,7 +182,10 @@ int main(int argc, char *argv[]) {
   clock_gettime(CLOCK_MONOTONIC, &start_time);
   for (int k = 0; k < max_k; k++) {
 
+#ifdef TIMER
     clock_gettime(CLOCK_MONOTONIC, &timer1_start);
+#endif
+
     for (int thr_id = 0; thr_id < num_threads; thr_id++) {
       int start_index = local_N * thr_id;
       struct hist_arg arg = {start_index, MIN(start_index + local_N, N), k, A, &hist[2 * thr_id]};
@@ -191,20 +196,26 @@ int main(int argc, char *argv[]) {
     for (int thr_id = 0; thr_id < num_threads; thr_id++) {
       tholder_join(thread_array[thr_id], NULL);
     }
+
+#ifdef TIMER
     clock_gettime(CLOCK_MONOTONIC, &timer1_end);
     time1 += difftimespec_ns(timer1_end, timer1_start); 
 
     clock_gettime(CLOCK_MONOTONIC, &timer2_start);
+#endif
 
     // Get total number of 0 bits
     int total_0bits = 0;
     for (int thr_id = 0; thr_id < num_threads; thr_id++) {
       total_0bits += hist[2 * thr_id];
     }
+
+#ifdef TIMER
     clock_gettime(CLOCK_MONOTONIC, &timer2_end);
     time2 += difftimespec_ns(timer2_end, timer2_start); 
 
     clock_gettime(CLOCK_MONOTONIC, &timer3_start);
+#endif
 
     for (int thr_id = 0; thr_id < num_threads; thr_id++) {
       int start_index = local_N * thr_id;
@@ -216,10 +227,13 @@ int main(int argc, char *argv[]) {
     for (int thr_id = 0; thr_id < num_threads; thr_id++) {
       tholder_join(thread_array[thr_id], NULL);
     }
+
+#ifdef TIMER
     clock_gettime(CLOCK_MONOTONIC, &timer3_end);
     time3 += difftimespec_ns(timer3_end, timer3_start); 
 
     clock_gettime(CLOCK_MONOTONIC, &timer4_start);
+#endif
 
     // Rewrite a list with new index
     for (int thr_id = 0; thr_id < num_threads; thr_id++) {
@@ -237,17 +251,11 @@ int main(int argc, char *argv[]) {
     new_A = save_A;
     save_A = A;
 
+#ifdef TIMER
     clock_gettime(CLOCK_MONOTONIC, &timer4_end);
     time4 += difftimespec_ns(timer4_end, timer4_start); 
+#endif
 
-    /*printf("k: %d\n", k);
-    printf("Offsets: ");
-    print_list(offsets, N);
-    printf("New Indexes: ");
-    print_list(new_indexes, N);
-    printf("New A: ");
-    print_list(A, N);
-    printf("\n");*/
   }
   clock_gettime(CLOCK_MONOTONIC, &end_time);
 
@@ -262,10 +270,12 @@ int main(int argc, char *argv[]) {
   printf("PASSED\n");
   printf("Execution Time: %f s\n", difftimespec_ns(end_time, start_time) / 1e9);
 
+#ifdef TIMER
   printf("Time1: %f s\n", time1 / 1e9);
   printf("Time2: %f s\n", time2 / 1e9);
   printf("Time3: %f s\n", time3 / 1e9);
   printf("Time4: %f s\n", time4 / 1e9);
+#endif
 
   free(hist_args);
   free(new_index_args);
