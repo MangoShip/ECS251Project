@@ -6,7 +6,7 @@ OBJ_DIR     = obj
 TARGET_DIR  = target
 
 # List of targets (each target should have a corresponding .c file in SRC_DIR)
-TARGETS = data_generate pagerank-parallel pagerank-serial
+TARGETS = data_generate pagerank-parallel pagerank-serial pagerank-tholder
 
 # Compiler settings 
 #
