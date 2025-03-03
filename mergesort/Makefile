@@ -6,7 +6,7 @@ OBJ_DIR     = obj
 TARGET_DIR  = target
 
 # List of targets (each target should have a corresponding .c file in SRC_DIR)
-TARGETS = openmpMergeSort parallelMergeSort serialMergeSort
+TARGETS = openmpMergeSort parallelMergeSort serialMergeSort tholderMergeSort
 
 # Compiler settings 
 #
