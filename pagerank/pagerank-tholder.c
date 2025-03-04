@@ -6,7 +6,7 @@
 #include "string.h"
 #include "pthread.h"
 #include <unistd.h>
-
+#include <tholder.h>
 
 
 typedef struct
@@ -16,7 +16,7 @@ typedef struct
 } Thread; 
 
 //Thread information
-pthread_t *Threads;
+tholder_t *Threads;
 Thread *Threads_data;
 
 //Input information, including thread count, graph count, and threshold
@@ -49,7 +49,7 @@ double difftimespec_ns(const struct timespec after, const struct timespec before
 void create_threads(){
 	
 	// Allocate memory for threads
-	Threads = (pthread_t *)malloc(num_threads * sizeof(pthread_t));
+	Threads = (tholder_t *)malloc(num_threads * sizeof(tholder_t));
 }
 
 void allocate_thread_data(){
@@ -102,11 +102,11 @@ void pagerank(){
   while(error > threshold){
     for (int i = 0; i < num_threads; i++)
     {
-        pthread_create(&Threads[i], NULL, &pagerank_parallel, (void*) &Threads_data[i]);
+        tholder_create(&Threads[i], NULL, &pagerank_parallel, (void*) &Threads_data[i]);
     }
     for (int i = 0; i < num_threads; i++)
 	{
-		pthread_join(Threads[i], NULL);
+		tholder_join(Threads[i], NULL);
 	}
     //Find the norm in order to normalize the new eigenvector
     double norm = 0;
