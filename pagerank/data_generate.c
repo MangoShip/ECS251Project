@@ -2,6 +2,7 @@
 #include "math.h"
 #include "stdlib.h"
 #include "string.h"
+#include "stdbool.h"
 
 FILE *current_file;
 
@@ -25,20 +26,39 @@ void generate_graph(){
     strcpy(filedata, temp);
     fprintf(current_file, "%s", filedata);
     strcpy(edge_data, "");
+    int num_connections = 3;
+    int connections[] = {-1,-1,-1};
+    bool found = true;
     for(int i = 0; i < size; i++){
-        for(int j = 0; j < size; j++){
-            if(rand() % 4 == 0){
-                strcpy(edge_data, "\n");
-                num_edges++;
-                sprintf(temp, "%d", i);
-                strcat(edge_data, temp);
-                strcat(edge_data, " ");
-                sprintf(temp, "%d", j);
-                strcat(edge_data, temp);
-                fprintf(current_file, "%s", edge_data);
+      for(int j = 0; j < num_connections; j++){
+        int space = rand() % size;
+        while(found){
+	    found = false;
+          space = rand() % size;
+          for(int k = 0; k < num_connections; k++){
+            if(connections[k] == space){
+	      found = true;
+              space = rand() % size;
+	      break;
             }
+          }
         }
+	    connections[j] = space;
+      }
+    for(int j = 0; j < num_connections; j++){
+	    strcpy(edge_data, "\n");
+        num_edges++;
+        sprintf(temp, "%d", i);
+        strcat(edge_data, temp);
+        strcat(edge_data, " ");
+        sprintf(temp, "%d", connections[j]);
+        strcat(edge_data, temp);
+        fprintf(current_file, "%s", edge_data);
+
+       }
+
     }
+
     if(num_edges == 0){
         num_edges = 1;
         fprintf(current_file, "\n 0 1");
