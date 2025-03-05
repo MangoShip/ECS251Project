@@ -6,7 +6,7 @@ OBJ_DIR     = obj
 TARGET_DIR  = target
 
 # List of targets (each target should have a corresponding .c file in SRC_DIR)
-TARGETS = cholesky_openmp cholesky_parallel cholesky_serial
+TARGETS = cholesky_openmp cholesky_parallel cholesky_serial cholesky_parallel_mod cholesky_tholder
 
 # Compiler settings 
 #
