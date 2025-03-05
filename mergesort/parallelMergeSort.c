@@ -5,9 +5,11 @@
 #include <math.h>
 #include <string.h>
 
-int global_min_parallel_size = 1000;       // Increased minimum subarray size for parallel threads
-int global_thread_stack_size = (1 << 20);    // Default thread stack size (1 MB)
-int global_max_depth;  // Computed from desired thread count
+int global_min_parallel_size = 10;       // Default minimum subarray size for parallel threads
+int global_thread_stack_size = (1 << 20);  // Default thread stack size (1 MB)
+
+// Global maximum depth for parallel recursion, computed from desired thread count.
+int global_max_depth;
 
 // Calculate the difference between two timespecs in nanoseconds
 double difftimespec_ns(const struct timespec after, const struct timespec before)
@@ -16,49 +18,72 @@ double difftimespec_ns(const struct timespec after, const struct timespec before
            ((double)after.tv_nsec - (double)before.tv_nsec);
 }
 
-// Optimized merge that uses a preallocated temporary buffer.
-void merge(int *arr, int *temp, int left, int mid, int right)
+// Merge two sorted subarrays [left, mid] and [mid+1, right]
+void merge(int *arr, int left, int mid, int right)
 {
-    int i = left, j = mid + 1, k = left;
-    while(i <= mid && j <= right)
+    int size_left = mid - left + 1;
+    int size_right = right - mid;
+
+    int *left_arr = malloc(size_left * sizeof(int));
+    int *right_arr = malloc(size_right * sizeof(int));
+
+    for (int i = 0; i < size_left; i++)
     {
-        if(arr[i] <= arr[j])
-            temp[k++] = arr[i++];
-        else
-            temp[k++] = arr[j++];
+        left_arr[i] = arr[left + i];
     }
-    while(i <= mid)
-        temp[k++] = arr[i++];
-    while(j <= right)
-        temp[k++] = arr[j++];
-    for(i = left; i <= right; i++)
-        arr[i] = temp[i];
+    for (int i = 0; i < size_right; i++)
+    {
+        right_arr[i] = arr[mid + 1 + i];
+    }
+
+    int i = 0, j = 0, k = left;
+    while (i < size_left && j < size_right)
+    {
+        if (left_arr[i] <= right_arr[j])
+        {
+            arr[k++] = left_arr[i++];
+        }
+        else
+        {
+            arr[k++] = right_arr[j++];
+        }
+    }
+    while (i < size_left)
+    {
+        arr[k++] = left_arr[i++];
+    }
+    while (j < size_right)
+    {
+        arr[k++] = right_arr[j++];
+    }
+
+    free(left_arr);
+    free(right_arr);
 }
 
-// Structure to pass arguments to merge_sort threads (parallel version).
+// Structure to pass arguments to merge_sort threads (parallel version)
 typedef struct
 {
     int *arr;
-    int *temp;
     int left;
     int right;
     int depth;
 } merge_args;
 
-// Forward declaration for merge_sort_depth.
-void merge_sort_depth(int *arr, int *temp, int left, int right, int depth);
+void merge_sort_depth(int *arr, int left, int right, int depth);
+void *merge_sort_thread(void *arg);
 
 // Unpacks arguments and calls merge_sort_depth
 void *merge_sort_thread(void *arg)
 {
     merge_args *args = (merge_args *)arg;
-    merge_sort_depth(args->arr, args->temp, args->left, args->right, args->depth);
+    merge_sort_depth(args->arr, args->left, args->right, args->depth);
     free(args);
     return NULL;
 }
 
-// Recursive parallel merge sort using pthreads and a preallocated buffer.
-void merge_sort_depth(int *arr, int *temp, int left, int right, int depth)
+// Recursive parallel merge sort with a depth parameter
+void merge_sort_depth(int *arr, int left, int right, int depth)
 {
     if (left < right)
     {
@@ -78,13 +103,11 @@ void merge_sort_depth(int *arr, int *temp, int left, int right, int depth)
             }
 
             args1->arr = arr;
-            args1->temp = temp;
             args1->left = left;
             args1->right = mid;
             args1->depth = depth + 1;
 
             args2->arr = arr;
-            args2->temp = temp;
             args2->left = mid + 1;
             args2->right = right;
             args2->depth = depth + 1;
@@ -108,32 +131,24 @@ void merge_sort_depth(int *arr, int *temp, int left, int right, int depth)
             pthread_join(tid1, NULL);
             pthread_join(tid2, NULL);
 
-            merge(arr, temp, left, mid, right);
+            merge(arr, left, mid, right);
         }
         else
         {
-            merge_sort_depth(arr, temp, left, mid, depth);
-            merge_sort_depth(arr, temp, mid + 1, right, depth);
-            merge(arr, temp, left, mid, right);
+            // Serial recursion when subarray is small or maximum depth reached
+            merge_sort_depth(arr, left, mid, depth);
+            merge_sort_depth(arr, mid + 1, right, depth);
+            merge(arr, left, mid, right);
         }
     }
 }
 
-// Wrapper for the pthread parallel merge sort that preallocates the temporary buffer.
 void merge_sort_parallel(int *arr, int left, int right)
 {
-    int n = right - left + 1;
-    int *temp = malloc(n * sizeof(int));
-    if (!temp)
-    {
-        perror("malloc");
-        exit(1);
-    }
-    merge_sort_depth(arr, temp, left, right, 0);
-    free(temp);
+    merge_sort_depth(arr, left, right, 0);
 }
 
-/* Remaining functions unchanged */
+// Fisher-Yates shuffle makes sure that ordering of elements doesn't affect performance
 void shuffle(int *arr, int n)
 {
     for (int i = n - 1; i > 0; i--)
