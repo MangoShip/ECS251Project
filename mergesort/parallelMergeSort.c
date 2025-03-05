@@ -5,7 +5,6 @@
 #include <math.h>
 #include <string.h>
 
-// Remove the macros and replace them with global variables with default values.
 int global_min_parallel_size = 10;       // Default minimum subarray size for parallel threads
 int global_thread_stack_size = (1 << 20);  // Default thread stack size (1 MB)
 
@@ -185,7 +184,7 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Number of threads must be positive.\n");
         exit(1);
     }
-    // Compute global_max_depth = ceil(log2(desired_threads))
+
     global_max_depth = (int)ceil(log2(desired_threads));
 
     // Parse optional flags: -m and -s before the list of sizes.
@@ -231,10 +230,9 @@ int main(int argc, char *argv[])
         {
             orig[i] = rand() % n;
         }
-        // Shuffle the original array
+
         shuffle(orig, n);
 
-        // Create copy for parallel sorting
         int *arr_parallel = malloc(n * sizeof(int));
         if (!arr_parallel)
         {

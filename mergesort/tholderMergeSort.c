@@ -6,7 +6,6 @@
 #include <string.h>
 #include <tholder.h>
 
-// Remove the macros and replace them with global variables with default values.
 int global_min_parallel_size = 10;       // Default minimum subarray size for parallel threads
 int global_thread_stack_size = (1 << 20);  // Default thread stack size (1 MB)
 
@@ -114,9 +113,9 @@ void merge_sort_depth(int *arr, int left, int right, int depth)
             args2->right = right;
             args2->depth = depth + 1;
 
-            // pthread_attr_t attr;
-            // pthread_attr_init(&attr);
-            // pthread_attr_setstacksize(&attr, global_thread_stack_size);
+            pthread_attr_t attr;
+            pthread_attr_init(&attr);
+            pthread_attr_setstacksize(&attr, global_thread_stack_size);
 
             if (tholder_create(&tid1, NULL, merge_sort_thread, args1) != 0)
             {
@@ -128,7 +127,8 @@ void merge_sort_depth(int *arr, int left, int right, int depth)
                 perror("tholder_create");
                 exit(1);
             }
-            // pthread_attr_destroy(&attr);
+            
+            pthread_attr_destroy(&attr);
             
             tholder_join(tid1, NULL);
             tholder_join(tid2, NULL);
@@ -188,7 +188,7 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Number of threads must be positive.\n");
         exit(1);
     }
-    // Compute global_max_depth = ceil(log2(desired_threads))
+
     global_max_depth = (int)ceil(log2(desired_threads));
 
     // Parse optional flags: -m and -s before the list of sizes.
@@ -234,10 +234,9 @@ int main(int argc, char *argv[])
         {
             orig[i] = rand() % n;
         }
-        // Shuffle the original array
+
         shuffle(orig, n);
 
-        // Create copy for parallel sorting
         int *arr_parallel = malloc(n * sizeof(int));
         if (!arr_parallel)
         {
@@ -253,7 +252,6 @@ int main(int argc, char *argv[])
         struct timespec start_time, end_time;
         double time_parallel;
 
-        // Measure parallel merge sort time
         clock_gettime(CLOCK_MONOTONIC, &start_time);
         merge_sort_parallel(arr_parallel, 0, n - 1);
         clock_gettime(CLOCK_MONOTONIC, &end_time);

@@ -5,7 +5,6 @@
 #include <math.h>
 #include <string.h>
 
-// Replace the macro with a global variable.
 int global_min_parallel_size = 1000;  // Default minimum subarray size for OpenMP tasks
 int global_thread_stack_size = 0;       // Not used in OpenMP, but recorded for CSV output
 
@@ -178,10 +177,9 @@ int main(int argc, char *argv[])
         {
             orig[i] = rand() % n;
         }
-        // Shuffle the original array
+
         shuffle(orig, n);
 
-        // Create copy for parallel sorting
         int *arr_parallel = malloc(n * sizeof(int));
         if (!arr_parallel)
         {
@@ -197,7 +195,6 @@ int main(int argc, char *argv[])
         struct timespec start_time, end_time;
         double time_parallel;
 
-        // Measure parallel merge sort time using clock_gettime
         clock_gettime(CLOCK_MONOTONIC, &start_time);
         merge_sort_parallel_omp(arr_parallel, 0, n - 1);
         clock_gettime(CLOCK_MONOTONIC, &end_time);
