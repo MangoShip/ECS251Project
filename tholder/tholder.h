@@ -1,3 +1,4 @@
+#include "stdio.h"
 #include <stdbool.h>
 #include <stdatomic.h>
 
@@ -22,6 +23,8 @@ typedef struct task_output
 {
     void *output;
     pthread_mutex_t join;
+    pthread_cond_t cond_var;
+    size_t index;
 } task_output;
 
 typedef struct thread_data
@@ -61,4 +64,4 @@ void *auxiliary_function(void *args);
 
 thread_data *get_inactive_index();
 
-task_output *task_output_init();
+task_output *task_output_init(size_t index);

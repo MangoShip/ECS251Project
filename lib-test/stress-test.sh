@@ -10,7 +10,7 @@ fi
 # have print statements enabled
 
 for ((i = 0; i < $3; i++)); do
-    ret=$(target/test $1 $2)
+    ret=$(./target/test-tholder $1 $2)
     num_tasks=$(printf "%s\n" "$ret" | egrep -c "Tasks completed: $1\$")
     if [[ $num_tasks -ne $2 ]] then
         printf "\rTRIAL $i FAILED  \n"

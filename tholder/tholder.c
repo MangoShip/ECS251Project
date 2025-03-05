@@ -6,7 +6,6 @@
 #include <sys/time.h>
 #include <time.h>
 #include <string.h>
-#include "errno.h"
 
 #include "tholder.h"
 #include "pthread.h"
@@ -19,14 +18,13 @@ thread_data **thread_pool = NULL;
 size_t thread_pool_size = 0;
 
 
-int dbg(const char *format, ...)
+int dbg(const char *restrict format, ...)
 {
     if (DEBUG) {
         va_list args;
         va_start(args, format);
         return vprintf(format, args);
     }
-    
     return 0;
 }
 
@@ -48,6 +46,7 @@ thread_data *get_inactive_index()
         // if we find an uninitialized slot, use it
         if (thread_pool[index] == NULL)
         {
+            printf("Allocating [%ld]\n", index);
             thread_pool[index] = thread_data_init(index);
             break;
         }
@@ -63,7 +62,6 @@ thread_data *get_inactive_index()
         {
             // thread pool is at capacity and there are no free slots
             // resize using realloc
-
             pthread_mutex_lock(&thread_pool_lock);
             
             thread_pool_size *= 2;
@@ -84,29 +82,25 @@ void *auxiliary_function(void *args)
 {
     thread_data *td = (thread_data *)args;
     struct timespec timeout;
-    int ret = -1;
+    dbg("[%ld] Created\n", td->index);
 
     // Check the has_task flag to see if there is work to be done
     // Additionally, try grabbing the lock. If it is busy, someone is trying to give us work
     while (true)
     {
-        if (ret == ETIMEDOUT)
-            dbg("[%ld] Waking up via timeout\n", td->index); 
-        else if (ret == -1) {
-            dbg("[%ld] Waking up via startup\n", td->index);
-        } else {
-            dbg("[%ld] Woken up by main thread\n", td->index);
-        }
-
         pthread_mutex_lock(&td->data_lock);
 
         if (!atomic_load(&td->has_task)) {
+            dbg("[%ld] Exiting...\n", td->index); 
             break;
+        } else {
+            dbg("[%ld](%p) Starting\n", td->index, td->output);
         }
 
         // Call the function
         td->output->output = td->function(td->args);
-        pthread_mutex_unlock(&td->output->join);
+        dbg("[%ld](%p) Task complete! Signaling %p\n", td->index, td->output, &td->output->cond_var);
+        pthread_cond_signal(&td->output->cond_var);
 
         // Set sleep timer
         clock_gettime(CLOCK_REALTIME, &timeout);
@@ -119,7 +113,7 @@ void *auxiliary_function(void *args)
 
         // Sleep until (signaled by another thread OR a specified time has passed)
         pthread_mutex_lock(&td->wait_lock);
-        ret = pthread_cond_timedwait(&td->work_cond_var, &td->wait_lock, &timeout);
+        pthread_cond_timedwait(&td->work_cond_var, &td->wait_lock, &timeout);
         pthread_mutex_unlock(&td->wait_lock);
 
         // If a thread is woken up prematurely, it is assumed that there is work to do
@@ -141,17 +135,16 @@ int tholder_create(tholder_t *__restrict __newthread,
     // Find the next open slot in global array
     thread_data *td = get_inactive_index();
 
-    // Allocate this task's output data
-    task_output *output = task_output_init();
-    td->output = output;
-    *__newthread = (tholder_t)output;
-    dbg("Starting thread [%ld], storing output at %llu\n", td->index, *__newthread);
-    // Lock the join lock immediately, the auxiliary_function will unlock it.
-    pthread_mutex_lock(&output->join);
     
     // Lock the house just to be safe. Getting past this line means the thread has gone to sleep but is not dead
     pthread_mutex_lock(&td->data_lock);
     
+    // Allocate this task's output data
+    task_output *output = task_output_init(td->index);
+    td->output = output;
+    *__newthread = (tholder_t)output;
+    dbg("Giving (%p) to [%ld]\n", output, td->index);
+
     // If there is no thread currently active at the given index, then spawn one
     bool expected = false;
     if (!atomic_load(&td->has_thread) && atomic_compare_exchange_strong(&td->has_thread, &expected, true))
@@ -236,19 +229,24 @@ inline void tholder_destroy()
     pthread_mutex_destroy(&thread_pool_lock);
 }
 
-task_output *task_output_init()
+task_output *task_output_init(size_t index)
 {
     task_output *output = (task_output *)calloc(1, sizeof(task_output));
     output->output = NULL;
     pthread_mutex_init(&output->join, NULL);
+    pthread_cond_init(&output->cond_var, NULL);
     return output;
 }
 
 int tholder_join(tholder_t th, void **thread_return)
 {
+    dbg("th = (%x)\n", th);
     task_output *output = (task_output *)th; 
+    dbg("[%ld](%p) Attempting to join on %p\n", output->index, output, &output->cond_var);
     pthread_mutex_lock(&output->join);
+    pthread_cond_wait(&output->cond_var, &output->join);
     pthread_mutex_unlock(&output->join);
+    dbg("[%ld](%p) Joined successfully\n", output->index, output);
 
     // If thread_return is not NULL, we must copy the return value over
     if (thread_return != NULL)
