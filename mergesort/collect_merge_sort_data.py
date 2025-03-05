@@ -43,22 +43,56 @@ def append_to_csv(csv_file, data, fieldnames):
 
 def plot_results(data, output_image, title_str):
     """
-    Plot the performance data. X-axis: array size, Y-axis: time in nanoseconds.
+    Plot the performance data. X-axis: array size, Y-axis: time in seconds.
     Different colors/markers for each program.
     """
     programs = sorted(set(row['program_name'] for row in data))
-    plt.figure()
+    fig, ax = plt.subplots()
     for prog in programs:
         x = [row['array_size'] for row in data if row['program_name'] == prog]
-        y = [row['time'] for row in data if row['program_name'] == prog]
-        plt.plot(x, y, marker='o', label=prog)
-    plt.xlabel("Array Size")
-    plt.ylabel("Time (nanoseconds)")
-    plt.xscale("log")
-    plt.yscale("log")
-    plt.legend()
-    plt.title(title_str)
+        y = [row['time']/1e9 for row in data if row['program_name'] == prog]
+        ax.plot(x, y, marker='o', label=prog)
+    ax.set_xlabel("Array Size")
+    ax.set_ylabel("Time (seconds)")
+    ax.set_xscale("linear")
+    ax.set_yscale("linear")
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, pos: f"{int(x)}"))
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, pos: f"{y:g}"))
+    ax.legend()
+    ax.set_title(title_str)
     plt.savefig(output_image)
+
+def create_pivot_table(data, output_csv):
+    """
+    Table for the performance data.
+    """
+    programs = sorted(set(row['program_name'] for row in data))
+    sizes = sorted(set(row['array_size'] for row in data))
+    headers = ["size"] + programs
+    table = []
+    for s in sizes:
+        row_dict = {}
+        for prog in programs:
+            entry = next((e for e in data if e['array_size'] == s and e['program_name'] == prog), None)
+            if entry is not None:
+                row_dict[prog] = f"{entry['time']/1e9:.6f}"
+            else:
+                row_dict[prog] = ""
+        table.append([s] + [row_dict[prog] for prog in programs])
+    with open(output_csv, 'w', newline='') as f:
+        writer = csv.writer(f, delimiter='\t')
+        writer.writerow(headers)
+        for row in table:
+            writer.writerow(row)
+
+def generate_table_image(csv_file, image_file):
+    import pandas as pd
+    df = pd.read_csv(csv_file, delimiter='\t')
+    fig, ax = plt.subplots(figsize=(len(df.columns)*2, len(df)*0.5+1))
+    ax.axis('tight')
+    ax.axis('off')
+    the_table = ax.table(cellText=df.values, colLabels=df.columns, loc='center', cellLoc='center')
+    plt.savefig(image_file, bbox_inches='tight')
 
 def main():
     parser = argparse.ArgumentParser(description="Data collection pipeline for merge sort performance.")
@@ -70,6 +104,8 @@ def main():
     parser.add_argument("--output_csv", type=str, default="performance_data.csv", help="Output CSV's file name")
     parser.add_argument("--output_image_name", type=str, default="performance_plot.csv", help="File name for the graph png image")
     parser.add_argument("--title_str", type=str, default="Performance Comparison", help="Title for the graph of results")
+    parser.add_argument("--pivot_csv", type=str, default="pivot_table.csv", help="Output pivot table CSV file name")
+    parser.add_argument("--pivot_image", type=str, default="pivot_table.png", help="Output pivot table image file name")
     args = parser.parse_args()
 
     # Define the programs with their executable names and how to pass arguments.
@@ -128,6 +164,10 @@ def main():
     print(f"Performance data appended to {args.output_csv}")
 
     plot_results(collected_data, args.output_image_name, args.title_str)
+    
+    create_pivot_table(collected_data, args.pivot_csv)
+    generate_table_image(args.pivot_csv, args.pivot_image)
+    print(f"Pivot table saved to {args.pivot_csv} and image saved to {args.pivot_image}")
 
 if __name__ == "__main__":
     main()
