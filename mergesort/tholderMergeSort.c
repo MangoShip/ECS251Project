@@ -133,8 +133,6 @@ void merge_sort_depth(int *arr, int left, int right, int depth)
             tholder_join(tid1, NULL);
             tholder_join(tid2, NULL);
 
-            tholder_destroy();
-
             merge(arr, left, mid, right);
         }
         else
@@ -272,6 +270,6 @@ int main(int argc, char *argv[])
 
         free(arr_parallel);
     }
-
+    tholder_destroy();
     return 0;
 }
