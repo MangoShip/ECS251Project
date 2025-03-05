@@ -18,41 +18,28 @@ double difftimespec_ns(const struct timespec after, const struct timespec before
            ((double)after.tv_nsec - (double)before.tv_nsec);
 }
 
-// Merge two sorted subarrays [left, mid] and [mid+1, right]
-void merge(int *arr, int left, int mid, int right)
+// Optimized merge that uses a preallocated temporary buffer instead of allocating new arrays.
+void merge(int *arr, int *temp, int left, int mid, int right)
 {
-    int size_left = mid - left + 1;
-    int size_right = right - mid;
-    int *left_arr = malloc(size_left * sizeof(int));
-    int *right_arr = malloc(size_right * sizeof(int));
-    if (!left_arr || !right_arr)
+    int i = left, j = mid + 1, k = left;
+    while (i <= mid && j <= right)
     {
-        perror("malloc");
-        exit(1);
-    }
-    for (int i = 0; i < size_left; i++)
-        left_arr[i] = arr[left + i];
-    for (int i = 0; i < size_right; i++)
-        right_arr[i] = arr[mid + 1 + i];
-
-    int i = 0, j = 0, k = left;
-    while (i < size_left && j < size_right)
-    {
-        if (left_arr[i] <= right_arr[j])
-            arr[k++] = left_arr[i++];
+        if (arr[i] <= arr[j])
+            temp[k++] = arr[i++];
         else
-            arr[k++] = right_arr[j++];
+            temp[k++] = arr[j++];
     }
-    while (i < size_left)
-        arr[k++] = left_arr[i++];
-    while (j < size_right)
-        arr[k++] = right_arr[j++];
-    free(left_arr);
-    free(right_arr);
+    while (i <= mid)
+        temp[k++] = arr[i++];
+    while (j <= right)
+        temp[k++] = arr[j++];
+    // Copy the merged elements back to the original array.
+    for (i = left; i <= right; i++)
+        arr[i] = temp[i];
 }
 
-// Recursive parallel merge sort with a depth parameter using OpenMP tasks
-void merge_sort_omp_depth(int *arr, int left, int right, int depth)
+// Recursive parallel merge sort with OpenMP tasks, now passing the preallocated buffer.
+void merge_sort_omp_depth(int *arr, int *temp, int left, int right, int depth)
 {
     if (left < right)
     {
@@ -60,40 +47,47 @@ void merge_sort_omp_depth(int *arr, int left, int right, int depth)
         // If we are below the maximum parallel depth and the subarray is large enough, spawn tasks.
         if (depth < global_max_depth && (right - left) >= global_min_parallel_size)
         {
-#pragma omp task shared(arr) firstprivate(left, mid, depth)
+#pragma omp task shared(arr, temp) firstprivate(left, mid, depth)
             {
-                merge_sort_omp_depth(arr, left, mid, depth + 1);
+                merge_sort_omp_depth(arr, temp, left, mid, depth + 1);
             }
-#pragma omp task shared(arr) firstprivate(mid, right, depth)
+#pragma omp task shared(arr, temp) firstprivate(mid, right, depth)
             {
-                merge_sort_omp_depth(arr, mid + 1, right, depth + 1);
+                merge_sort_omp_depth(arr, temp, mid + 1, right, depth + 1);
             }
 #pragma omp taskwait
-            merge(arr, left, mid, right);
+            merge(arr, temp, left, mid, right);
         }
         else
         {
-            // Otherwise, perform serial recursion.
-            merge_sort_omp_depth(arr, left, mid, depth);
-            merge_sort_omp_depth(arr, mid + 1, right, depth);
-            merge(arr, left, mid, right);
+            merge_sort_omp_depth(arr, temp, left, mid, depth);
+            merge_sort_omp_depth(arr, temp, mid + 1, right, depth);
+            merge(arr, temp, left, mid, right);
         }
     }
 }
 
-// Wrapper for OpenMP parallel merge sort that starts a parallel region
+// Wrapper for the OpenMP parallel merge sort that preallocates the temporary buffer.
 void merge_sort_parallel_omp(int *arr, int left, int right)
 {
+    int n = right - left + 1;
+    int *temp = malloc(n * sizeof(int));
+    if (!temp)
+    {
+        perror("malloc");
+        exit(1);
+    }
 #pragma omp parallel
     {
 #pragma omp single
         {
-            merge_sort_omp_depth(arr, left, right, 0);
+            merge_sort_omp_depth(arr, temp, left, right, 0);
         }
     }
+    free(temp);
 }
 
-// Fisher-Yates shuffle to randomize array order
+/* Remaining functions unchanged */
 void shuffle(int *arr, int n)
 {
     for (int i = n - 1; i > 0; i--)
