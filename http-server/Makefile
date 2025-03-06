@@ -6,7 +6,7 @@ OBJ_DIR     = obj
 TARGET_DIR  = target
 
 # List of targets (each target should have a corresponding .c file in SRC_DIR)
-TARGETS = http-clients http-server_serial
+TARGETS = http-clients http-server_serial http-server_pthread http-server_tholder
 
 # Compiler settings 
 #

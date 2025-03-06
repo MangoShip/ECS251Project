@@ -8,6 +8,8 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 
+#include "../tholder/tholder.h"
+
 #define BUFFER_SIZE 4096
 
 struct sockaddr_in server_addr, client_addr;
@@ -104,9 +106,8 @@ int main(int argc, char *argv[]) {
             perror("accept");
             continue;
         }
-        pthread_t *tid = (pthread_t *)malloc(sizeof(pthread_t));
-        pthread_create(tid, NULL, handle_request, (void *)client_fd);
-        pthread_detach(*tid);
+        tholder_t *tid = (tholder_t *)malloc(sizeof(tholder_t));
+        tholder_create(tid, NULL, handle_request, (void *)client_fd);
     }
     printf("\n");
 
