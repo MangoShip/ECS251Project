@@ -5,6 +5,7 @@ import csv
 import re
 import os
 import matplotlib.pyplot as plt
+import pandas as pd
 
 def run_executable(executable, arguments, num_runs=5):
     """
@@ -13,15 +14,18 @@ def run_executable(executable, arguments, num_runs=5):
     """
     times = []
     pattern = re.compile(r'^PERFDATA,(\d+),([^,]+),(\d+),(\d+),(\d+),([\d.]+)', re.MULTILINE)
+
     for _ in range(num_runs):
         proc = subprocess.run([executable] + arguments, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         output = proc.stdout
         match = pattern.search(output)
+
         if match:
             time_val = float(match.group(6))
             times.append(time_val)
         else:
             print(f"Warning: PERFDATA line not found in output from {executable} with arguments {arguments}")
+    
     if times:
         return sum(times) / len(times)
     else:
@@ -34,6 +38,7 @@ def append_to_csv(csv_file, data, fieldnames):
     """
     file_exists = os.path.isfile(csv_file)
     write_header = not file_exists or os.path.getsize(csv_file) == 0
+
     with open(csv_file, 'a', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         if write_header:
@@ -48,18 +53,23 @@ def plot_results(data, output_image, title_str):
     """
     programs = sorted(set(row['program_name'] for row in data))
     fig, ax = plt.subplots()
+
     for prog in programs:
         x = [row['array_size'] for row in data if row['program_name'] == prog]
         y = [row['time']/1e9 for row in data if row['program_name'] == prog]
         ax.plot(x, y, marker='o', label=prog)
+
     ax.set_xlabel("Array Size")
     ax.set_ylabel("Time (seconds)")
     ax.set_xscale("linear")
     ax.set_yscale("linear")
+
     ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, pos: f"{int(x)}"))
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, pos: f"{y:g}"))
+
     ax.legend()
     ax.set_title(title_str)
+
     plt.savefig(output_image)
 
 def create_pivot_table(data, output_csv):
@@ -70,27 +80,34 @@ def create_pivot_table(data, output_csv):
     sizes = sorted(set(row['array_size'] for row in data))
     headers = ["size"] + programs
     table = []
+
     for s in sizes:
         row_dict = {}
+
         for prog in programs:
             entry = next((e for e in data if e['array_size'] == s and e['program_name'] == prog), None)
+            
             if entry is not None:
                 row_dict[prog] = f"{entry['time']/1e9:.6f}"
             else:
                 row_dict[prog] = ""
+
         table.append([s] + [row_dict[prog] for prog in programs])
+
     with open(output_csv, 'w', newline='') as f:
         writer = csv.writer(f, delimiter='\t')
         writer.writerow(headers)
+
         for row in table:
             writer.writerow(row)
 
 def generate_table_image(csv_file, image_file):
-    import pandas as pd
     df = pd.read_csv(csv_file, delimiter='\t')
     fig, ax = plt.subplots(figsize=(len(df.columns)*2, len(df)*0.5+1))
+
     ax.axis('tight')
     ax.axis('off')
+
     the_table = ax.table(cellText=df.values, colLabels=df.columns, loc='center', cellLoc='center')
     plt.savefig(image_file, bbox_inches='tight')
 
@@ -106,26 +123,44 @@ def main():
     parser.add_argument("--title_str", type=str, default="Performance Comparison", help="Title for the graph of results")
     parser.add_argument("--pivot_csv", type=str, default="pivot_table.csv", help="Output pivot table CSV file name")
     parser.add_argument("--pivot_image", type=str, default="pivot_table.png", help="Output pivot table image file name")
+    
     args = parser.parse_args()
 
-    # Define the programs with their executable names and how to pass arguments.
     # For serialMergeSort, no parallel parameters are used.
     programs = [
         {
             "name": "serialMergeSort",
-            "executable": "./serialMergeSort",
+            "executable": "./target/serialMergeSort",
             "args": []  # Only the array size will be appended.
         },
         {
             "name": "parallelMergeSort",
-            "executable": "./parallelMergeSort",
-            # The new flags: <num_threads> then optional flags -m and -s, then the array size.
+            "executable": "./target/parallelMergeSort",
             "args": [str(args.threads), "-m", str(args.min_parallel_size), "-s", str(args.thread_stack_size)]
         },
         {
             "name": "openmpMergeSort",
-            "executable": "./openmpMergeSort",
-            # Similarly: <num_threads> then optional flags -m and -s, then the array size.
+            "executable": "./target/openmpMergeSort",
+            "args": [str(args.threads), "-m", str(args.min_parallel_size), "-s", str(args.thread_stack_size)]
+        },
+        {
+            "name": "openmpMergeSortIterative",
+            "executable": "./target/openmpMergeSortIterative",
+            "args": [str(args.threads), "-m", str(args.min_parallel_size), "-s", str(args.thread_stack_size)]
+        },
+        {
+            "name": "parallelMergeSortIterative",
+            "executable": "./target/parallelMergeSortIterative",
+            "args": [str(args.threads), "-m", str(args.min_parallel_size), "-s", str(args.thread_stack_size)]
+        },
+        {
+            "name": "tholderMergeSortIterative",
+            "executable": "./target/tholderMergeSortIterative",
+            "args": [str(args.threads), "-m", str(args.min_parallel_size), "-s", str(args.thread_stack_size)]
+        },
+        {
+            "name": "serialMergeSortIterative",
+            "executable": "./target/serialMergeSortIterative",
             "args": [str(args.threads), "-m", str(args.min_parallel_size), "-s", str(args.thread_stack_size)]
         }
     ]
@@ -138,9 +173,11 @@ def main():
             # For serial version, just append the size; for the others, append the already‐defined arguments plus the size.
             run_args = prog["args"] + [str(size)]
             avg_time = run_executable(prog["executable"], run_args, num_runs=args.runs)
+
             if avg_time is None:
                 print(f"Skipping {prog['name']} for array size {size} due to missing timing data.")
                 continue
+
             # For the serial version, record fixed parameters.
             if prog["name"] == "serialMergeSort":
                 num_threads = 1
@@ -150,6 +187,7 @@ def main():
                 num_threads = args.threads
                 min_parallel = args.min_parallel_size
                 thread_stack = args.thread_stack_size
+
             collected_data.append({
                 "array_size": size,
                 "program_name": prog["name"],
@@ -158,6 +196,7 @@ def main():
                 "thread_stack_size": thread_stack,
                 "time": avg_time
             })
+
             print(f"Collected: size={size}, program={prog['name']}, time={avg_time} ns")
 
     append_to_csv(args.output_csv, collected_data, fieldnames)
