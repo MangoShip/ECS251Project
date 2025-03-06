@@ -5,7 +5,7 @@
 #include <math.h>
 #include <string.h>
 
-int global_min_parallel_size = 1000;  // Default minimum subarray size for OpenMP tasks
+int global_min_parallel_size = 1000;
 int global_thread_stack_size = 0;
 
 // Global maximum recursion depth for parallelism, computed from the desired thread count.
@@ -202,7 +202,7 @@ int main(int argc, char *argv[])
             print_array(arr_parallel, n);
         }
 
-        //For passing the printed output to the CSV output line for the Python pipeline
+        // For passing the printed output to the CSV output line for the Python pipeline
         printf("PERFDATA,%d,openmpMergeSort,%d,%d,%d,%f\n", n, desired_threads, global_min_parallel_size, global_thread_stack_size, time_parallel);
 
         free(arr_parallel);

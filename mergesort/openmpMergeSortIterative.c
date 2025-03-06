@@ -5,8 +5,8 @@
 #include <math.h>
 #include <string.h>
 
-int global_min_parallel_size = 1000;  // Default minimum subarray size for OpenMP tasks
-int global_thread_stack_size = 0;       // Not used in OpenMP, but recorded for CSV output
+int global_min_parallel_size = 1000;
+int global_thread_stack_size = 0;    // Not used in OpenMP, but recorded for CSV output
 int global_max_depth;
 
 // Calculate the difference between two timespecs in nanoseconds
@@ -21,7 +21,8 @@ double difftimespec_ns(const struct timespec after, const struct timespec before
 void merge(int *arr, int *temp, int left, int mid, int right)
 {
     int i = left, j = mid + 1, k = left;
-    while (i <= mid && j <= right) {
+    while (i <= mid && j <= right)
+    {
         if (arr[i] <= arr[j])
             temp[k++] = arr[i++];
         else
@@ -41,14 +42,15 @@ void merge_sort_parallel_omp(int *arr, int left, int right)
 {
     int n = right - left + 1;
     int *temp = malloc(n * sizeof(int));
-    if (!temp) {
+    if (!temp)
+    {
         perror("malloc");
         exit(1);
     }
     int curr_size, i;
     for (curr_size = 1; curr_size < n; curr_size *= 2)
     {
-        #pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static)
         for (i = left; i <= right - curr_size; i += 2 * curr_size)
         {
             int mid = i + curr_size - 1;
@@ -175,7 +177,7 @@ int main(int argc, char *argv[])
             print_array(arr_parallel, n);
         }
 
-        //For passing the printed output to the CSV output line for the Python pipeline
+        // For passing the printed output to the CSV output line for the Python pipeline
         printf("PERFDATA,%d,openmpMergeSort,%d,%d,%d,%f\n", n, desired_threads, global_min_parallel_size, global_thread_stack_size, time_parallel);
 
         free(arr_parallel);

@@ -7,8 +7,8 @@
 #include <tholder.h>
 
 int global_min_parallel_size = 10;
-int global_thread_stack_size = (1 << 20);    // Default thread stack size (1 MB)
-int global_max_depth;  // Computed from desired thread count
+int global_thread_stack_size = (1 << 20); // Default thread stack size (1 MB)
+int global_max_depth;
 
 // Calculate the difference between two timespecs in nanoseconds
 double difftimespec_ns(const struct timespec after, const struct timespec before)
@@ -21,18 +21,18 @@ double difftimespec_ns(const struct timespec after, const struct timespec before
 void merge(int *arr, int *temp, int left, int mid, int right)
 {
     int i = left, j = mid + 1, k = left;
-    while(i <= mid && j <= right)
+    while (i <= mid && j <= right)
     {
-        if(arr[i] <= arr[j])
+        if (arr[i] <= arr[j])
             temp[k++] = arr[i++];
         else
             temp[k++] = arr[j++];
     }
-    while(i <= mid)
+    while (i <= mid)
         temp[k++] = arr[i++];
-    while(j <= right)
+    while (j <= right)
         temp[k++] = arr[j++];
-    for(i = left; i <= right; i++)
+    for (i = left; i <= right; i++)
         arr[i] = temp[i];
 }
 
@@ -250,7 +250,7 @@ int main(int argc, char *argv[])
             print_array(arr_parallel, n);
         }
 
-        //For passing the printed output to the CSV output line for the Python pipeline
+        // For passing the printed output to the CSV output line for the Python pipeline
         printf("PERFDATA,%d,parallelMergeSort,%d,%d,%d,%f\n", n, desired_threads, global_min_parallel_size, global_thread_stack_size, time_parallel);
 
         free(arr_parallel);
