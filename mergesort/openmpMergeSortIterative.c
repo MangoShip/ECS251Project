@@ -1,14 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <pthread.h>
 #include <time.h>
+#include <omp.h>
 #include <math.h>
 #include <string.h>
-#include <tholder.h>
 
-int global_min_parallel_size = 10;
-int global_thread_stack_size = (1 << 20);    // Default thread stack size (1 MB)
-int global_max_depth;  // Computed from desired thread count
+int global_min_parallel_size = 1000;  // Default minimum subarray size for OpenMP tasks
+int global_thread_stack_size = 0;       // Not used in OpenMP, but recorded for CSV output
+int global_max_depth;
 
 // Calculate the difference between two timespecs in nanoseconds
 double difftimespec_ns(const struct timespec after, const struct timespec before)
@@ -17,125 +16,50 @@ double difftimespec_ns(const struct timespec after, const struct timespec before
            ((double)after.tv_nsec - (double)before.tv_nsec);
 }
 
-// Merge two sorted subarrays [left, mid] and [mid+1, right]
+// Optimized merge using preallocated temporary buffer.
+// It merges subarrays [left, mid], [mid+1, right] into temp, copies result back to arr.
 void merge(int *arr, int *temp, int left, int mid, int right)
 {
     int i = left, j = mid + 1, k = left;
-    while(i <= mid && j <= right)
-    {
-        if(arr[i] <= arr[j])
+    while (i <= mid && j <= right) {
+        if (arr[i] <= arr[j])
             temp[k++] = arr[i++];
         else
             temp[k++] = arr[j++];
     }
-    while(i <= mid)
+    while (i <= mid)
         temp[k++] = arr[i++];
-    while(j <= right)
+    while (j <= right)
         temp[k++] = arr[j++];
-    for(i = left; i <= right; i++)
+    for (i = left; i <= right; i++)
         arr[i] = temp[i];
 }
 
-// Structure to pass arguments to merge_sort threads (parallel version)
-typedef struct
-{
-    int *arr;
-    int *temp;
-    int left;
-    int right;
-    int depth;
-} merge_args;
-
-// Forward declaration for merge_sort_depth.
-void merge_sort_depth(int *arr, int *temp, int left, int right, int depth);
-
-// Unpacks arguments and calls merge_sort_depth
-void *merge_sort_thread(void *arg)
-{
-    merge_args *args = (merge_args *)arg;
-    merge_sort_depth(args->arr, args->temp, args->left, args->right, args->depth);
-    free(args);
-    return NULL;
-}
-
-// Recursive parallel merge sort with a depth parameter
-void merge_sort_depth(int *arr, int *temp, int left, int right, int depth)
-{
-    if (left < right)
-    {
-        int mid = left + (right - left) / 2;
-
-        // Spawn threads only if depth is below global_max_depth and subarray is large
-        if (depth < global_max_depth && (right - left) >= global_min_parallel_size)
-        {
-            tholder_t tid1, tid2;
-            merge_args *args1 = malloc(sizeof(merge_args));
-            merge_args *args2 = malloc(sizeof(merge_args));
-
-            if (!args1 || !args2)
-            {
-                perror("malloc");
-                exit(1);
-            }
-
-            args1->arr = arr;
-            args1->temp = temp;
-            args1->left = left;
-            args1->right = mid;
-            args1->depth = depth + 1;
-
-            args2->arr = arr;
-            args2->temp = temp;
-            args2->left = mid + 1;
-            args2->right = right;
-            args2->depth = depth + 1;
-
-            pthread_attr_t attr;
-            pthread_attr_init(&attr);
-            pthread_attr_setstacksize(&attr, global_thread_stack_size);
-
-            if (tholder_create(&tid1, &attr, merge_sort_thread, args1) != 0)
-            {
-                perror("tholder_create");
-                exit(1);
-            }
-            if (tholder_create(&tid2, &attr, merge_sort_thread, args2) != 0)
-            {
-                perror("tholder_create");
-                exit(1);
-            }
-
-            pthread_attr_destroy(&attr);
-
-            tholder_join(tid1, NULL);
-            tholder_join(tid2, NULL);
-
-            merge(arr, temp, left, mid, right);
-        }
-        else
-        {
-            merge_sort_depth(arr, temp, left, mid, depth);
-            merge_sort_depth(arr, temp, mid + 1, right, depth);
-            merge(arr, temp, left, mid, right);
-        }
-    }
-}
-
-// Wrapper for pthread parallel merge sort that preallocates temporary buffer
-void merge_sort_parallel(int *arr, int left, int right)
+// Iterative (bottom‑up) merge sort using OpenMP.
+// A single temporary buffer is allocated here and reused on every merge.
+void merge_sort_parallel_omp(int *arr, int left, int right)
 {
     int n = right - left + 1;
     int *temp = malloc(n * sizeof(int));
-    if (!temp)
-    {
+    if (!temp) {
         perror("malloc");
         exit(1);
     }
-    merge_sort_depth(arr, temp, left, right, 0);
+    int curr_size, i;
+    for (curr_size = 1; curr_size < n; curr_size *= 2)
+    {
+        #pragma omp parallel for schedule(static)
+        for (i = left; i <= right - curr_size; i += 2 * curr_size)
+        {
+            int mid = i + curr_size - 1;
+            int r = (i + 2 * curr_size - 1 <= right) ? i + 2 * curr_size - 1 : right;
+            merge(arr, temp, i, mid, r);
+        }
+    }
     free(temp);
 }
 
-// Fisher-Yates shuffle makes sure that ordering of elements doesn't affect performance
+// Fisher-Yates shuffle to randomize array order
 void shuffle(int *arr, int n)
 {
     for (int i = n - 1; i > 0; i--)
@@ -173,6 +97,8 @@ int main(int argc, char *argv[])
     }
 
     global_max_depth = (int)ceil(log2(desired_threads));
+
+    omp_set_num_threads(desired_threads);
 
     // Parse optional flags: -m and -s before the list of sizes.
     int arg_index = 2;
@@ -236,9 +162,8 @@ int main(int argc, char *argv[])
         double time_parallel;
 
         clock_gettime(CLOCK_MONOTONIC, &start_time);
-        merge_sort_parallel(arr_parallel, 0, n - 1);
+        merge_sort_parallel_omp(arr_parallel, 0, n - 1);
         clock_gettime(CLOCK_MONOTONIC, &end_time);
-
         time_parallel = difftimespec_ns(end_time, start_time);
 
         printf("Test case %d, size %d\n", t + 1, n);
@@ -251,11 +176,9 @@ int main(int argc, char *argv[])
         }
 
         //For passing the printed output to the CSV output line for the Python pipeline
-        printf("PERFDATA,%d,parallelMergeSort,%d,%d,%d,%f\n", n, desired_threads, global_min_parallel_size, global_thread_stack_size, time_parallel);
+        printf("PERFDATA,%d,openmpMergeSort,%d,%d,%d,%f\n", n, desired_threads, global_min_parallel_size, global_thread_stack_size, time_parallel);
 
         free(arr_parallel);
     }
-
-    tholder_destroy();
     return 0;
 }
