@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
+#include <sys/stat.h>   // for mkdir, stat
+#include <sys/types.h>  // for mode_t
 
 #define SEED 42
 
@@ -42,7 +44,7 @@ void generate_positive_definite_matrix(double **A, int N) {
 
     // temp = A * A^T
     double **temp = allocate_matrix(N);
-    for (int i = 0; i < N; i++) {
+    for (int i = 0; i < N; i++){
         for (int j = 0; j < N; j++) {
             double sum = 0.0;
             for (int k = 0; k < N; k++) {
@@ -103,11 +105,15 @@ void cholesky_serial(double **A, double **L, int N) {
 
 // -----------------------------------------------------------------------------
 // main()
-//   Usage: ./cholesky_serial <matrix_size>
+//   Usage: ./cholesky_serial <matrix_size> [<test_number>]
+// If test_number is not provided, it defaults to 1.
+// This version prints the results to stdout and also writes the initial matrix,
+// the L matrix (top-left 5x5) and execution time to a file in the "serial_tests" directory.
+// The file name format is: [matrix_size]_[test_number].txt
 // -----------------------------------------------------------------------------
 int main(int argc, char *argv[]) {
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s <matrix_size>\n", argv[0]);
+    if (argc < 2 || argc > 3) {
+        fprintf(stderr, "Usage: %s <matrix_size> [<test_number>]\n", argv[0]);
         return EXIT_FAILURE;
     }
 
@@ -115,6 +121,12 @@ int main(int argc, char *argv[]) {
     if (N <= 0) {
         fprintf(stderr, "Matrix size must be a positive integer.\n");
         return EXIT_FAILURE;
+    }
+
+    // If test number is provided, use it; otherwise default to 1.
+    int test_number = 1;
+    if (argc == 3) {
+        test_number = atoi(argv[2]);
     }
 
     // Allocate matrices
@@ -149,8 +161,59 @@ int main(int argc, char *argv[]) {
     printf("\nCholesky Decomposition (L Matrix, First 5x5):\n");
     print_matrix(L, N);
 
-    // Print timing
+    // Print execution time
     printf("\nExecution Time: %.6f seconds\n", elapsed_time);
+
+    // -----------------------------
+    // File output section:
+    // - Create the directory "serial_tests" if it doesn't exist.
+    // - Construct the file name as "[matrix_size]_[test_number].txt".
+    // - Write the initial matrix (top-left 5x5), L matrix (top-left 5x5), and execution time to the file.
+    // -----------------------------
+    struct stat st = {0};
+    if (stat("serial_tests", &st) == -1) {
+        #ifdef _WIN32
+            mkdir("serial_tests");
+        #else
+            mkdir("serial_tests", 0700);
+        #endif
+    }
+    char subdir[256];
+    snprintf(subdir, sizeof(subdir), "serial_tests/%d", N);
+    if (stat(subdir, &st) == -1) {
+        #ifdef _WIN32
+            mkdir(subdir);
+        #else 
+            mkdir(subdir, 0700);
+        #endif
+    }
+
+    char filename[256];
+    snprintf(filename, sizeof(filename), "%s/%d_%d.txt", subdir, N, test_number);
+    FILE *fp = fopen(filename, "w");
+    if (fp == NULL) {
+        perror("Error opening file for writing");
+        return EXIT_FAILURE;
+    }
+    fprintf(fp, "Matrix Size: %d\nTest Number: %d\n\n", N, test_number);
+    fprintf(fp, "Initial Matrix A (top-left 5x5):\n");
+    int limit = (N < 5) ? N : 5;
+    for (int i = 0; i < limit; i++) {
+        for (int j = 0; j < limit; j++) {
+            fprintf(fp, "%8.4f ", A[i][j]);
+        }
+        fprintf(fp, "\n");
+    }
+    fprintf(fp, "\nCholesky Decomposition (L Matrix, top-left 5x5):\n");
+    for (int i = 0; i < limit; i++) {
+        for (int j = 0; j < limit; j++) {
+            fprintf(fp, "%8.4f ", L[i][j]);
+        }
+        fprintf(fp, "\n");
+    }
+    fprintf(fp, "\nExecution Time: %.6f seconds\n", elapsed_time);
+    fclose(fp);
+    printf("\nResults written to %s\n", filename);
 
     // Free resources
     free_matrix(A, N);
