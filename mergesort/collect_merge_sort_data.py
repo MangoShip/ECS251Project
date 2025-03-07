@@ -114,12 +114,12 @@ def generate_table_image(csv_file, image_file):
 def main():
     parser = argparse.ArgumentParser(description="Data collection pipeline for merge sort performance.")
     parser.add_argument("array_sizes", nargs="+", type=int, help="List of array sizes (for instance, 100 1000 100000 ...)")
-    parser.add_argument("--threads", type=int, default=4, help="Number of threads for parallel versions")
+    parser.add_argument("--threads", nargs="+", type=int, default=[4], help="List of thread counts for parallel versions")
     parser.add_argument("--min_parallel_size", type=int, default=10, help="Minimum subarray size to use for parallel threads")
     parser.add_argument("--thread_stack_size", type=int, default=(1 << 20), help="Thread stack size for each thread (in bytes)")
     parser.add_argument("--runs", type=int, default=5, help="Number of runs for each configuration (to average)")
     parser.add_argument("--output_csv", type=str, default="performance_data.csv", help="Output CSV's file name")
-    parser.add_argument("--output_image_name", type=str, default="performance_plot.csv", help="File name for the graph png image")
+    parser.add_argument("--output_image_name", type=str, default="performance_plot.png", help="File name for the graph png image")
     parser.add_argument("--title_str", type=str, default="Performance Comparison", help="Title for the graph of results")
     parser.add_argument("--pivot_csv", type=str, default="pivot_table.csv", help="Output pivot table CSV file name")
     parser.add_argument("--pivot_image", type=str, default="pivot_table.png", help="Output pivot table image file name")
@@ -136,32 +136,32 @@ def main():
         {
             "name": "parallelMergeSort",
             "executable": "./target/parallelMergeSort",
-            "args": [str(args.threads), "-m", str(args.min_parallel_size), "-s", str(args.thread_stack_size)]
+            "uses_threads": True
         },
         {
             "name": "openmpMergeSort",
             "executable": "./target/openmpMergeSort",
-            "args": [str(args.threads), "-m", str(args.min_parallel_size), "-s", str(args.thread_stack_size)]
+            "uses_threads": True
         },
         {
             "name": "openmpMergeSortIterative",
             "executable": "./target/openmpMergeSortIterative",
-            "args": [str(args.threads), "-m", str(args.min_parallel_size), "-s", str(args.thread_stack_size)]
+            "uses_threads": True
         },
         {
             "name": "parallelMergeSortIterative",
             "executable": "./target/parallelMergeSortIterative",
-            "args": [str(args.threads), "-m", str(args.min_parallel_size), "-s", str(args.thread_stack_size)]
+            "uses_threads": True
         },
         {
             "name": "tholderMergeSortIterative",
             "executable": "./target/tholderMergeSortIterative",
-            "args": [str(args.threads), "-m", str(args.min_parallel_size), "-s", str(args.thread_stack_size)]
+            "uses_threads": True
         },
         {
             "name": "serialMergeSortIterative",
             "executable": "./target/serialMergeSortIterative",
-            "args": [str(args.threads), "-m", str(args.min_parallel_size), "-s", str(args.thread_stack_size)]
+            "args": [] # Only the array size will be appended.
         }
     ]
 
@@ -170,43 +170,73 @@ def main():
 
     for size in args.array_sizes:
         for prog in programs:
-            # For serial version, just append the size; for the others, append the already‐defined arguments plus the size.
-            run_args = prog["args"] + [str(size)]
-            avg_time = run_executable(prog["executable"], run_args, num_runs=args.runs)
+            # If the program uses threads, iterate over the provided thread counts.
+            if prog.get("uses_threads", False):
+                for thread_count in args.threads:
+                    run_args = [str(thread_count), "-m", str(args.min_parallel_size), "-s", str(args.thread_stack_size), str(size)]
+                    avg_time = run_executable(prog["executable"], run_args, num_runs=args.runs)
 
-            if avg_time is None:
-                print(f"Skipping {prog['name']} for array size {size} due to missing timing data.")
-                continue
+                    if avg_time is None:
+                        print(f"Skipping {prog['name']} for array size {size} and threads {thread_count} due to missing timing data.")
+                        continue
 
-            # For the serial version, record fixed parameters.
-            if prog["name"] == "serialMergeSort":
-                num_threads = 1
-                min_parallel = 0
-                thread_stack = 0
+                    collected_data.append({
+                        "array_size": size,
+                        "program_name": prog["name"],
+                        "num_threads": thread_count,
+                        "min_parallel_size": args.min_parallel_size,
+                        "thread_stack_size": args.thread_stack_size,
+                        "time": avg_time
+                    })
+
+                    print(f"Collected: size={size}, program={prog['name']}, threads={thread_count}, time={avg_time} ns")
             else:
-                num_threads = args.threads
-                min_parallel = args.min_parallel_size
-                thread_stack = args.thread_stack_size
+                # For serial versions, just append the size.
+                run_args = prog.get("args", []) + [str(size)]
+                avg_time = run_executable(prog["executable"], run_args, num_runs=args.runs)
 
-            collected_data.append({
-                "array_size": size,
-                "program_name": prog["name"],
-                "num_threads": num_threads,
-                "min_parallel_size": min_parallel,
-                "thread_stack_size": thread_stack,
-                "time": avg_time
-            })
+                if avg_time is None:
+                    print(f"Skipping {prog['name']} for array size {size} due to missing timing data.")
+                    continue
 
-            print(f"Collected: size={size}, program={prog['name']}, time={avg_time} ns")
+                collected_data.append({
+                    "array_size": size,
+                    "program_name": prog["name"],
+                    "num_threads": 1,
+                    "min_parallel_size": 0,
+                    "thread_stack_size": 0,
+                    "time": avg_time
+                })
+
+                print(f"Collected: size={size}, program={prog['name']}, time={avg_time} ns")
 
     append_to_csv(args.output_csv, collected_data, fieldnames)
     print(f"Performance data appended to {args.output_csv}")
 
-    plot_results(collected_data, args.output_image_name, args.title_str)
-    
-    create_pivot_table(collected_data, args.pivot_csv)
-    generate_table_image(args.pivot_csv, args.pivot_image)
-    print(f"Pivot table saved to {args.pivot_csv} and image saved to {args.pivot_image}")
+    # Separate plot and table files for each unique thread count.
+    # For serial versions, num_threads is recorded as 1.
+    unique_threads = sorted({row["num_threads"] for row in collected_data})
+    for t in unique_threads:
+        # Create file names by appending _<thread_count> before the extension.
+        base_graph, ext_graph = os.path.splitext(args.output_image_name)
+        graph_filename = f"{base_graph}_{t}{ext_graph}"
+        
+        base_pivot_csv, ext_pivot_csv = os.path.splitext(args.pivot_csv)
+        pivot_csv_filename = f"{base_pivot_csv}_{t}{ext_pivot_csv}"
+        
+        base_pivot_img, ext_pivot_img = os.path.splitext(args.pivot_image)
+        pivot_img_filename = f"{base_pivot_img}_{t}{ext_pivot_img}"
+        
+        # Filter the data for the current thread count.
+        filtered_data = [row for row in collected_data if row["num_threads"] == t]
+        
+        plot_results(filtered_data, graph_filename, args.title_str)
+        create_pivot_table(filtered_data, pivot_csv_filename)
+        generate_table_image(pivot_csv_filename, pivot_img_filename)
+        
+        print(f"Generated graph: {graph_filename}")
+        print(f"Generated pivot table CSV: {pivot_csv_filename}")
+        print(f"Generated pivot table image: {pivot_img_filename}")
 
 if __name__ == "__main__":
     main()
