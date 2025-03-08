@@ -3,74 +3,91 @@
 #include <math.h>
 #include <pthread.h>
 #include <time.h>
+#include <sys/stat.h>   // For mkdir, stat
+#include <sys/types.h>  // For mode_t
 
-// Define seed for reproducibility
 #define SEED 42
 
 // ---------------------------
-// Global variables for matrices
+// Global Variables for Matrices
 // ---------------------------
 static double **A = NULL;  // Input matrix (N x N)
 static double **L = NULL;  // Output lower-triangular matrix (N x N)
 static int N = 0;          // Matrix size
-static int NUM_THREADS = 0;
+static int NUM_THREADS = 0; // Number of threads to use
 
 // ---------------------------
-// Structure for passing work to each thread (for off-diagonal update)
+// Structure for Off-Diagonal Work
 // ---------------------------
 typedef struct {
     int j;       // The current column index
-    int start;   // Starting row index (inclusive)
+    int start;   // Starting row index (inclusive) for off-diagonal update
     int end;     // Ending row index (exclusive)
 } thread_data_t;
 
 // ---------------------------
-// Helper functions: allocate_matrix, free_matrix, generate_positive_definite_matrix, print_matrix
+// Global File Pointers for Logging
 // ---------------------------
-static double **allocate_matrix(int size) {
-    double **matrix = (double **)malloc(size * sizeof(double *));
-    for (int i = 0; i < size; i++) {
-        matrix[i] = (double *)malloc(size * sizeof(double));
+FILE *result_fp = NULL;   // For results output
+FILE *threads_fp = NULL;  // For thread activity logs
+
+// ---------------------------
+// Matrix Helper Functions
+// ---------------------------
+double **allocate_matrix(int N) {
+    double **matrix = (double **)malloc(N * sizeof(double *));
+    for (int i = 0; i < N; i++) {
+        matrix[i] = (double *)malloc(N * sizeof(double));
     }
     return matrix;
 }
 
-static void free_matrix(double **matrix, int size) {
-    for (int i = 0; i < size; i++) {
+void free_matrix(double **matrix, int N) {
+    for (int i = 0; i < N; i++) {
         free(matrix[i]);
     }
     free(matrix);
 }
 
-static void generate_positive_definite_matrix(double **matrix, int size) {
+void generate_positive_definite_matrix(double **A, int N) {
     srand(SEED);
     // Fill with random values in [1,10]
-    for (int i = 0; i < size; i++) {
-        for (int j = 0; j < size; j++) {
-            matrix[i][j] = rand() % 10 + 1;
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
+            A[i][j] = rand() % 10 + 1;
         }
     }
-    // Form a positive-definite matrix via A = A * A^T
-    double **temp = allocate_matrix(size);
-    for (int i = 0; i < size; i++) {
-        for (int j = 0; j < size; j++) {
+    // Form A = A * A^T
+    double **temp = allocate_matrix(N);
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
             double sum = 0.0;
-            for (int k = 0; k < size; k++) {
-                sum += matrix[i][k] * matrix[j][k];
+            for (int k = 0; k < N; k++) {
+                sum += A[i][k] * A[j][k];
             }
             temp[i][j] = sum;
         }
     }
-    for (int i = 0; i < size; i++) {
-        for (int j = 0; j < size; j++) {
-            matrix[i][j] = temp[i][j];
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
+            A[i][j] = temp[i][j];
         }
     }
-    free_matrix(temp, size);
+    free_matrix(temp, N);
 }
 
-static void print_matrix(double **matrix, int size) {
-    int limit = (size < 5) ? size : 5;
+void print_matrix(double **matrix, int N, FILE *fp) {
+    int limit = (N < 5) ? N : 5;
+    for (int i = 0; i < limit; i++) {
+        for (int j = 0; j < limit; j++) {
+            fprintf(fp, "%8.4f ", matrix[i][j]);
+        }
+        fprintf(fp, "\n");
+    }
+}
+
+void print_matrix_stdout(double **matrix, int N) {
+    int limit = (N < 5) ? N : 5;
     for (int i = 0; i < limit; i++) {
         for (int j = 0; j < limit; j++) {
             printf("%8.4f ", matrix[i][j]);
@@ -80,12 +97,12 @@ static void print_matrix(double **matrix, int size) {
 }
 
 // ---------------------------
-// Worker function for off-diagonal update of one column.
-// This function will be invoked by each thread in the thread pool created
-// for a given column's parallel section.
+// Thread Pool: Off-Diagonal Work per Column
+// For each column j, we spawn a new thread pool (multiple threads) to compute
+// the off-diagonal entries in that column.
 // ---------------------------
 void *offdiag_worker(void *arg) {
-    thread_data_t *data = (thread_data_t *) arg;
+    thread_data_t *data = (thread_data_t *)arg;
     int j = data->j;
     for (int i = data->start; i < data->end; i++) {
         double sum = 0.0;
@@ -94,50 +111,46 @@ void *offdiag_worker(void *arg) {
         }
         L[i][j] = (A[i][j] - sum) / L[j][j];
     }
-    printf("   [Worker] Processed rows [%d, %d) for column %d.\n", data->start, data->end, j);
+    fprintf(threads_fp, "   [Worker] Processed rows [%d, %d) for column %d.\n", data->start, data->end, j);
     return NULL;
 }
 
 // ---------------------------
 // cholesky_parallel_multiple:
-// This function implements the Cholesky Decomposition using a parallel-serial-parallel structure,
-// but it forces multiple thread pools to be spawned: one new thread pool is created for each column's
-// off-diagonal (parallel) update, then destroyed, before moving on to the next column.
+// Implements the parallel-serial-parallel structure with a new thread pool for each column's
+// off-diagonal updates. Logs thread activity to threads_fp.
 // ---------------------------
 void cholesky_parallel_multiple() {
-    // Loop over each column j
     for (int j = 0; j < N; j++) {
         // SERIAL PORTION: Compute diagonal element L[j][j]
-        printf("Main thread: [Serial] Computing diagonal for column %d...\n", j);
+        fprintf(threads_fp, "Main thread: [Serial] Computing diagonal for column %d...\n", j);
         double sum = 0.0;
         for (int k = 0; k < j; k++) {
             sum += L[j][k] * L[j][k];
         }
         L[j][j] = sqrt(A[j][j] - sum);
-        printf("Main thread: [Serial] Computed L[%d][%d] = %f\n", j, j, L[j][j]);
+        fprintf(threads_fp, "Main thread: [Serial] Computed L[%d][%d] = %f\n", j, j, L[j][j]);
 
-        // If there are no rows below the diagonal, continue.
-        if (j + 1 >= N) {
+        // If no off-diagonals exist, move to next column.
+        if (j + 1 >= N)
             continue;
-        }
 
-        // PARALLEL PORTION: Spawn a new thread pool for the off-diagonal updates in column j.
-        printf("Main thread: [Parallel] Spawning new thread pool for column %d off-diagonals...\n", j);
-
-        int total_rows = N - (j + 1);  // rows to update: j+1, ..., N-1
-        int num_threads = NUM_THREADS; // Use NUM_THREADS for this column
+        // PARALLEL PORTION: Spawn a new thread pool for this column.
+        fprintf(threads_fp, "Main thread: [Parallel] Spawning thread pool for column %d off-diagonals...\n", j);
+        int total_rows = N - (j + 1);
+        int num_threads = NUM_THREADS;
         pthread_t *threads = (pthread_t *)malloc(num_threads * sizeof(pthread_t));
         thread_data_t *tdata = (thread_data_t *)malloc(num_threads * sizeof(thread_data_t));
 
-        // Partition the rows among the threads.
+        // Partition rows among threads.
         int base = total_rows / num_threads;
         int rem  = total_rows % num_threads;
         for (int t = 0; t < num_threads; t++) {
             tdata[t].j = j;
             tdata[t].start = (j + 1) + t * base + (t < rem ? t : rem);
-            tdata[t].end   = tdata[t].start + base + (t < rem ? 1 : 0);
-            printf("   Main thread: Thread %d will process rows [%d, %d) for column %d.\n",
-                   t, tdata[t].start, tdata[t].end, j);
+            tdata[t].end = tdata[t].start + base + (t < rem ? 1 : 0);
+            fprintf(threads_fp, "   Main thread: Thread %d will process rows [%d, %d) for column %d.\n",
+                    t, tdata[t].start, tdata[t].end, j);
             pthread_create(&threads[t], NULL, offdiag_worker, &tdata[t]);
         }
 
@@ -145,23 +158,27 @@ void cholesky_parallel_multiple() {
         for (int t = 0; t < num_threads; t++) {
             pthread_join(threads[t], NULL);
         }
-        printf("Main thread: [Parallel] Completed off-diagonal updates for column %d.\n", j);
+        fprintf(threads_fp, "Main thread: [Parallel] Completed off-diagonal updates for column %d.\n", j);
 
-        // Free the resources for this thread pool.
         free(threads);
         free(tdata);
     }
 }
 
 // ---------------------------
-// main: Setup matrices, run the parallel Cholesky decomposition (with multiple thread pools),
-// then print results and execution time.
+// main:
+// Usage: ./cholesky_parallel_mod <matrix_size> <num_threads> [<test_number>]
+// If test_number is not provided, it defaults to 1.
+// This program writes two files:
+//   1. Results: [matrix_size]_[test_number].txt in directory "pthread_parallel_tests/<matrix_size>/".
+//   2. Thread logs: [matrix_size]_[test_number]_threads.txt in the same directory.
 // ---------------------------
 int main(int argc, char *argv[]) {
-    if (argc != 3) {
-        fprintf(stderr, "Usage: %s <matrix_size> <num_threads>\n", argv[0]);
+    if (argc < 3 || argc > 4) {
+        fprintf(stderr, "Usage: %s <matrix_size> <num_threads> [<test_number>]\n", argv[0]);
         return EXIT_FAILURE;
     }
+
     N = atoi(argv[1]);
     NUM_THREADS = atoi(argv[2]);
     if (N <= 0 || NUM_THREADS <= 0) {
@@ -169,11 +186,16 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
+    int test_number = 1;
+    if (argc == 4) {
+        test_number = atoi(argv[3]);
+    }
+
     // Allocate matrices A and L.
     A = allocate_matrix(N);
     L = allocate_matrix(N);
 
-    // Generate a random positive-definite matrix.
+    // Generate random positive-definite matrix.
     generate_positive_definite_matrix(A, N);
 
     // Initialize L to zeros.
@@ -184,22 +206,76 @@ int main(int argc, char *argv[]) {
     }
 
     printf("\nInitial Matrix A (top-left 5x5):\n");
-    print_matrix(A, N);
+    print_matrix(A, N, stdout);
 
-    struct timespec start, end;
-    clock_gettime(CLOCK_MONOTONIC, &start);
+    // -----------------------------
+    // Prepare directory structure:
+    // Create "pthread_parallel_tests" if it doesn't exist,
+    // and a subdirectory named with the matrix size.
+    // -----------------------------
+    struct stat st = {0};
+    if (stat("pthread_parallel_tests", &st) == -1) {
+        #ifdef _WIN32
+            mkdir("pthread_parallel_tests");
+        #else
+            mkdir("pthread_parallel_tests", 0700);
+        #endif
+    }
+    char subdir[256];
+    snprintf(subdir, sizeof(subdir), "pthread_parallel_tests/%d", N);
+    if (stat(subdir, &st) == -1) {
+        #ifdef _WIN32
+            mkdir(subdir);
+        #else
+            mkdir(subdir, 0700);
+        #endif
+    }
 
-    // Perform the Cholesky Decomposition, spawning a new thread pool for each column.
+    // Construct filenames for results and thread logs.
+    char result_filename[256];
+    char threads_filename[256];
+    snprintf(result_filename, sizeof(result_filename), "%s/%d_%d.txt", subdir, N, test_number);
+    snprintf(threads_filename, sizeof(threads_filename), "%s/%d_%d_threads.txt", subdir, N, test_number);
+
+    // Open the thread log file.
+    threads_fp = fopen(threads_filename, "w");
+    if (threads_fp == NULL) {
+        perror("Error opening thread log file");
+        return EXIT_FAILURE;
+    }
+
+    // Time the Cholesky decomposition.
+    struct timespec start_time, end_time;
+    clock_gettime(CLOCK_MONOTONIC, &start_time);
+
     cholesky_parallel_multiple();
 
-    clock_gettime(CLOCK_MONOTONIC, &end);
-    double elapsed_time = (end.tv_sec - start.tv_sec) + 
-                          (end.tv_nsec - start.tv_nsec) / 1e9;
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+    double elapsed_time = (end_time.tv_sec - start_time.tv_sec) +
+                          (end_time.tv_nsec - start_time.tv_nsec) / 1e9;
 
     printf("\nCholesky Decomposition (L Matrix, top-left 5x5):\n");
-    print_matrix(L, N);
+    print_matrix(L, N, stdout);
     printf("\nExecution Time: %.6f seconds\n", elapsed_time);
 
+    // Open results file and write results.
+    result_fp = fopen(result_filename, "w");
+    if (result_fp == NULL) {
+        perror("Error opening result file for writing");
+        return EXIT_FAILURE;
+    }
+    fprintf(result_fp, "Matrix Size: %d\nTest Number: %d\n\n", N, test_number);
+    fprintf(result_fp, "Initial Matrix A (top-left 5x5):\n");
+    print_matrix(A, N, result_fp);
+    fprintf(result_fp, "\nCholesky Decomposition (L Matrix, top-left 5x5):\n");
+    print_matrix(L, N, result_fp);
+    fprintf(result_fp, "\nExecution Time: %.6f seconds\n", elapsed_time);
+    fclose(result_fp);
+    fclose(threads_fp);
+    printf("\nResults written to %s\n", result_filename);
+    printf("Thread activity log written to %s\n", threads_filename);
+
+    // Free resources.
     free_matrix(A, N);
     free_matrix(L, N);
 
