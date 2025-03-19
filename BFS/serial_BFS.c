@@ -40,33 +40,38 @@ void addEdge(AdjList *graph, int u, int v) {
     addNeighbor(&graph[v], u);
 }
 
-// Generate a random graph with n nodes and an average degree of about 10.
-// We target m = n * 5 undirected edges (each edge is stored twice).
-void generate_random_graph(AdjList *graph, int n) {
+// Generate a complex random graph with n nodes.
+// For each node, assign a random degree between 50 and 100,
+// and add that many undirected edges to randomly chosen nodes (avoiding self-loops).
+void generate_complex_graph(AdjList *graph, int n) {
+    int min_degree = 50;
+    int max_degree = 100;
     // Initialize each node's adjacency list
     for (int i = 0; i < n; i++) {
         initAdjList(&graph[i]);
     }
-    long long m = (long long)n * 5;  // target number of undirected edges
-    for (long long i = 0; i < m; i++) {
-        int u = rand() % n;
-        int v = rand() % n;
-        while (u == v) { // avoid self-loop
-            v = rand() % n;
+    // For each node, generate a random degree and add that many edges.
+    for (int i = 0; i < n; i++) {
+        int degree = min_degree + rand() % (max_degree - min_degree + 1);
+        for (int j = 0; j < degree; j++) {
+            int v = rand() % n;
+            while (v == i) { // avoid self-loop
+                v = rand() % n;
+            }
+            // Add an undirected edge (duplicates are acceptable)
+            addEdge(graph, i, v);
         }
-        // Duplicate edges are very unlikely in a sparse graph; ignore duplicates.
-        addEdge(graph, u, v);
     }
 }
 
-// Compute the difference between two timespecs in nanoseconds
+// Compute the difference between two timespec structures in nanoseconds
 double difftimespec_ns(const struct timespec after, const struct timespec before) {
     return ((double)after.tv_sec - (double)before.tv_sec) * 1e9 +
            ((double)after.tv_nsec - (double)before.tv_nsec);
 }
 
 // Serial BFS (level-synchronous) on an adjacency list graph.
-// BFS always starts from node 0 and only outputs the total number of vertices reached.
+// BFS always starts from node 0 and outputs only the total number of vertices reached.
 void serial_bfs(AdjList *graph, int n, int start) {
     bool *visited = calloc(n, sizeof(bool));
     if (visited == NULL) {
@@ -99,7 +104,7 @@ void serial_bfs(AdjList *graph, int n, int start) {
                 }
             }
         }
-        // Prepare for next level: update current_frontier
+        // Update current frontier with the next frontier
         for (int i = 0; i < next_size; i++) {
             current_frontier[i] = next_frontier[i];
         }
@@ -132,8 +137,8 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    // Seed the random number generator
-    srand(time(NULL));
+    // Set a fixed random seed to ensure consistent graph generation
+    srand(42);
 
     // Dynamically allocate the graph (an array of adjacency lists)
     AdjList *graph = malloc(n * sizeof(AdjList));
@@ -142,8 +147,8 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    // Generate a random graph with n nodes
-    generate_random_graph(graph, n);
+    // Generate a complex random graph with n nodes
+    generate_complex_graph(graph, n);
 
     printf("Test case 1, size %d\n", n);
 
