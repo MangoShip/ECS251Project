@@ -4,13 +4,13 @@
 #include <time.h>
 #include <pthread.h>
 
-#define MAX_NODES 100000000  // maximum allowed nodes
+#define MAX_NODES 100000000  // Maximum allowed nodes
 
 // Structure for an adjacency list node
 typedef struct {
-    int *neighbors; // dynamic array of neighbor indices
-    int count;      // current number of neighbors
-    int capacity;   // allocated capacity of the neighbors array
+    int *neighbors; // Dynamic array of neighbor indices
+    int count;      // Current number of neighbors
+    int capacity;   // Allocated capacity for the neighbors array
 } AdjList;
 
 // Initialize an adjacency list
@@ -41,26 +41,31 @@ void addEdge(AdjList *graph, int u, int v) {
     addNeighbor(&graph[v], u);
 }
 
-// Generate a random graph with n nodes and average degree ~10.
-// We target m = n * 5 undirected edges (each edge stored twice).
-void generate_random_graph(AdjList *graph, int n) {
+// Generate a complex random graph with n nodes.
+// For each node, assign a random degree between 50 and 100,
+// and add that many undirected edges to randomly chosen nodes (avoiding self-loops).
+void generate_complex_graph(AdjList *graph, int n) {
+    int min_degree = 50;
+    int max_degree = 100;
     // Initialize each node's adjacency list
     for (int i = 0; i < n; i++) {
         initAdjList(&graph[i]);
     }
-    long long m = (long long)n * 5;  // target number of undirected edges
-    for (long long i = 0; i < m; i++) {
-        int u = rand() % n;
-        int v = rand() % n;
-        while (u == v) { // avoid self-loop
-            v = rand() % n;
+    // For each node, generate a random degree and add that many edges.
+    for (int i = 0; i < n; i++) {
+        int degree = min_degree + rand() % (max_degree - min_degree + 1);
+        for (int j = 0; j < degree; j++) {
+            int v = rand() % n;
+            while (v == i) { // avoid self-loop
+                v = rand() % n;
+            }
+            // Add an undirected edge (duplicates are acceptable)
+            addEdge(graph, i, v);
         }
-        // Duplicate edges are very unlikely in a sparse graph; ignore duplicates.
-        addEdge(graph, u, v);
     }
 }
 
-// Compute the difference between two timespecs in nanoseconds
+// Compute the difference between two timespec structures in nanoseconds
 double difftimespec_ns(const struct timespec after, const struct timespec before) {
     return ((double)after.tv_sec - (double)before.tv_sec) * 1e9 +
            ((double)after.tv_nsec - (double)before.tv_nsec);
@@ -68,14 +73,14 @@ double difftimespec_ns(const struct timespec after, const struct timespec before
 
 // Structure for thread arguments used in parallel BFS
 struct thread_args {
-    int start;             // start index in the current frontier array
-    int end;               // end index (exclusive) in the current frontier array
-    int *current_frontier; // pointer to the current frontier array
-    int *next_frontier;    // pointer to the shared next frontier array
-    int *next_size;        // pointer to the shared next frontier size
-    AdjList *graph;        // pointer to the graph (array of AdjList)
-    bool *visited;         // pointer to the global visited array
-    pthread_mutex_t *mutex; // pointer to the mutex for synchronizing access
+    int start;             // Start index in the current frontier array
+    int end;               // End index (exclusive) in the current frontier array
+    int *current_frontier; // Pointer to the current frontier array
+    int *next_frontier;    // Pointer to the shared next frontier array
+    int *next_size;        // Pointer to the shared next frontier size
+    AdjList *graph;        // Pointer to the graph (array of AdjList)
+    bool *visited;         // Pointer to the global visited array
+    pthread_mutex_t *mutex; // Pointer to the mutex for synchronizing access
 };
 
 // Thread function for processing a portion of the current frontier
@@ -99,8 +104,7 @@ void *bfs_thread(void *arg) {
 }
 
 // Parallel BFS using pthreads (level-synchronous) on an adjacency list graph.
-// BFS always starts at node 0. Instead of printing every vertex,
-// it outputs only the total number of vertices reached.
+// BFS always starts from node 0 and outputs only the total number of vertices reached.
 void parallel_bfs_pthread(AdjList *graph, int n, int startVertex, int num_threads) {
     bool *visited = calloc(n, sizeof(bool));
     if (visited == NULL) {
@@ -110,7 +114,7 @@ void parallel_bfs_pthread(AdjList *graph, int n, int startVertex, int num_thread
     int *current_frontier = malloc(n * sizeof(int));
     int *next_frontier = malloc(n * sizeof(int));
     if (current_frontier == NULL || next_frontier == NULL) {
-        fprintf(stderr, "Memory allocation failed for frontiers\n");
+        fprintf(stderr, "Memory allocation failed for frontier arrays\n");
         exit(1);
     }
     int current_size = 0, next_size = 0;
@@ -163,7 +167,7 @@ void parallel_bfs_pthread(AdjList *graph, int n, int startVertex, int num_thread
         free(threads);
         free(args);
 
-        // Prepare for the next level: update the current frontier
+        // Update current frontier with next frontier
         for (int i = 0; i < next_size; i++) {
             current_frontier[i] = next_frontier[i];
         }
@@ -175,11 +179,10 @@ void parallel_bfs_pthread(AdjList *graph, int n, int startVertex, int num_thread
     // Count the number of visited nodes
     int visited_count = 0;
     for (int i = 0; i < n; i++) {
-        if (visited[i]) {
+        if (visited[i])
             visited_count++;
-        }
     }
-
+    // Output only the visited count
     printf("BFS visited count: %d\n", visited_count);
 
     free(visited);
@@ -204,8 +207,8 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    // Seed the random number generator
-    srand(time(NULL));
+    // Set a fixed random seed to ensure consistent graph generation
+    srand(42);
 
     // Dynamically allocate the graph (an array of adjacency lists)
     AdjList *graph = malloc(n * sizeof(AdjList));
@@ -214,19 +217,17 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    // Generate a random graph with n nodes
-    generate_random_graph(graph, n);
+    // Generate a complex random graph with n nodes
+    generate_complex_graph(graph, n);
 
     printf("Test case 1, size %d\n", n);
 
     struct timespec start_time, end_time;
-    double elapsed_time;
-
     clock_gettime(CLOCK_MONOTONIC, &start_time);
     parallel_bfs_pthread(graph, n, 0, num_threads);
     clock_gettime(CLOCK_MONOTONIC, &end_time);
 
-    elapsed_time = difftimespec_ns(end_time, start_time);
+    double elapsed_time = difftimespec_ns(end_time, start_time);
     printf("Parallel (pthread) BFS traversal time: %f ns\n", elapsed_time);
 
     // Free the graph memory

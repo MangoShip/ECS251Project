@@ -4,6 +4,8 @@
 #include <time.h>
 #include "../tholder/tholder.h"
 
+#define MAX_NODES 100000000  // Maximum allowed nodes
+
 // Structure for an adjacency list node
 typedef struct {
     int *neighbors; // Dynamic array of neighbor indices
@@ -39,21 +41,26 @@ void addEdge(AdjList *graph, int u, int v) {
     addNeighbor(&graph[v], u);
 }
 
-// Generate a random graph with n nodes and about n*5 undirected edges (each edge stored twice)
-void generate_random_graph(AdjList *graph, int n) {
+// Generate a complex random graph with n nodes.
+// For each node, assign a random degree between 50 and 100 and add that many undirected edges
+// to randomly chosen nodes (avoiding self-loops). Duplicate edges may occur.
+void generate_complex_graph(AdjList *graph, int n) {
+    int min_degree = 50;
+    int max_degree = 100;
     // Initialize each node's adjacency list
     for (int i = 0; i < n; i++) {
         initAdjList(&graph[i]);
     }
-    long long m = (long long)n * 5;
-    for (long long i = 0; i < m; i++) {
-        int u = rand() % n;
-        int v = rand() % n;
-        while (u == v) { // Avoid self-loop
-            v = rand() % n;
+    // For each node, generate a random degree and add that many edges.
+    for (int i = 0; i < n; i++) {
+        int degree = min_degree + rand() % (max_degree - min_degree + 1);
+        for (int j = 0; j < degree; j++) {
+            int v = rand() % n;
+            while (v == i) { // avoid self-loop
+                v = rand() % n;
+            }
+            addEdge(graph, i, v);
         }
-        // Add the edge to the graph
-        addEdge(graph, u, v);
     }
 }
 
@@ -116,15 +123,17 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    srand(time(NULL));
+    // Set a fixed random seed to ensure consistent graph generation
+    srand(42);
 
-    // Allocate memory for the graph (array of adjacency lists)
+    // Dynamically allocate the graph (an array of adjacency lists)
     AdjList *graph = malloc(n * sizeof(AdjList));
     if (graph == NULL) {
         fprintf(stderr, "Memory allocation failed for graph\n");
         exit(1);
     }
-    generate_random_graph(graph, n);
+    // Generate a complex random graph with n nodes
+    generate_complex_graph(graph, n);
 
     // Allocate and initialize the visited array (all false initially)
     bool *visited = calloc(n, sizeof(bool));
