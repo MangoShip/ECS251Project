@@ -1,0 +1,2 @@
+size	openmpMergeSort	openmpMergeSortIterative	parallelMergeSort	parallelMergeSortIterative	serialMergeSort	serialMergeSortIterative	tholderMergeSortIterative
+10000000	0.282123	0.216105	0.181921	0.237829	1.148182	0.893013	0.235012
