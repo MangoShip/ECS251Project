@@ -29,29 +29,29 @@ void merge(int *arr, int *temp, int left, int mid, int right)
         arr[i] = temp[i];
 }
 
-void merge_sort_serial_iterative(int *arr, int left, int right)
+// Serial merge sort helper (pure recursive implementation without threading)
+void merge_sort_serial_helper(int *arr, int *temp, int left, int right)
+{
+    if (left < right)
+    {
+        int mid = left + (right - left) / 2;
+        merge_sort_serial_helper(arr, temp, left, mid);
+        merge_sort_serial_helper(arr, temp, mid + 1, right);
+        merge(arr, temp, left, mid, right);
+    }
+}
+
+// Serial merge sort (pure recursive implementation without threading)
+void merge_sort_serial(int *arr, int left, int right)
 {
     int n = right - left + 1;
     int *temp = malloc(n * sizeof(int));
-    
     if (!temp)
     {
         fprintf(stderr, "Memory allocation failed\n");
         exit(1);
     }
-
-    // Merge subarrays in bottom-up manner
-    for (int curr_size = 1; curr_size < n; curr_size *= 2)
-    {
-        // Merge subarrays in this pass. If array size is not a power of two,
-        // last merge may have smaller right segment
-        for (int i = left; i <= right - curr_size; i += 2 * curr_size)
-        {
-            int mid = i + curr_size - 1;
-            int r = (i + 2 * curr_size - 1 <= right) ? i + 2 * curr_size - 1 : right;
-            merge(arr, temp, i, mid, r);
-        }
-    }
+    merge_sort_serial_helper(arr, temp, left, right);
     free(temp);
 }
 
@@ -132,7 +132,7 @@ int main(int argc, char *argv[])
 
         // Measure serial merge sort time using clock_gettime
         clock_gettime(CLOCK_MONOTONIC, &start_time);
-        merge_sort_serial_iterative(arr_serial, 0, n - 1);
+        merge_sort_serial(arr_serial, 0, n - 1);
         clock_gettime(CLOCK_MONOTONIC, &end_time);
 
         time_serial = difftimespec_ns(end_time, start_time);
@@ -147,7 +147,7 @@ int main(int argc, char *argv[])
         }
 
         //For passing the printed output to the CSV output line for the Python pipeline
-        printf("PERFDATA,%d,serialMergeSortIterative,1,0,0,%f\n", n, time_serial);
+        printf("PERFDATA,%d,serialMergeSort,1,0,0,%f\n", n, time_serial);
 
         free(arr_serial);
     }
