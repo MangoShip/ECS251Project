@@ -11,6 +11,7 @@
 #endif 
 
 #define DEFAULT_MAX_THREADS 8
+#define TIMEOUT_DURATION_NSEC 1000000
 
 extern size_t threads_spawned;
 

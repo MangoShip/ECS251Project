@@ -42,7 +42,7 @@ int main(int argc, char *argv[])
         for (size_t i = 0; i < num_threads; ++i)
             tholder_join(threads[i], NULL);
         
-        printf("Tasks completed: %d\n", atomic_load(&tasks));
+        /*printf("Tasks completed: %d\n", atomic_load(&tasks));*/
     }
 
     tholder_destroy();
